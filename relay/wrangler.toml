@@ -1,0 +1,17 @@
+# Slotwave relay: one Helius WebSocket, many listeners.
+# Deploy: npx wrangler login && npx wrangler secret put HELIUS_WS_URL && npx wrangler deploy
+name = "slotwave-relay"
+main = "src/worker.ts"
+compatibility_date = "2026-10-01"
+
+[[durable_objects.bindings]]
+name = "HUB"
+class_name = "RelayHub"
+
+# The free plan needs SQLite-backed Durable Objects.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RelayHub"]
+
+[vars]
+ALLOWED_ORIGINS = "https://staticmeow23.github.io"

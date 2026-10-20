@@ -57,9 +57,10 @@
 
         <fieldset class="source">
           <legend>Data source</legend>
-          <label><input type="radio" name="source" value="public" checked /> Public Solana RPC <span class="tag">free</span></label>
+          <label id="relay-option" hidden><input type="radio" name="source" value="relay" /> Slotwave relay <span class="tag">free, no key needed</span></label>
           <label><input type="radio" name="source" value="custom" /> My own endpoint <span class="tag">Helius free plan, QuickNode, …</span></label>
           <label><input type="radio" name="source" value="demo" /> Demo <span class="tag">simulated, offline</span></label>
+          <label><input type="radio" name="source" value="public" /> Public Solana RPC <span class="tag">often refuses websites</span></label>
           <div id="custom-box" class="custom" hidden>
             <input id="endpoint" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="wss://mainnet.helius-rpc.com/?api-key=…" />
             <label class="small"><input id="remember" type="checkbox" /> Remember on this device</label>

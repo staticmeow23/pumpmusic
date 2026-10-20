@@ -1,5 +1,5 @@
 import { CHANNELS, DEFAULT_GAINS, MusicEngine, type Channel, type VisualNote } from './audio/engine';
-import { COIN_COLORS, DEFAULT_WS_ENDPOINTS, FEED, HELIUS_CREDITS_PER_100KB, HELIUS_FREE_MONTHLY_CREDITS, MAX_COINS, MUSIC } from './config';
+import { COIN_COLORS, DEFAULT_WS_ENDPOINTS, RELAY_WS_URL, FEED, HELIUS_CREDITS_PER_100KB, HELIUS_FREE_MONTHLY_CREDITS, MAX_COINS, MUSIC } from './config';
 import { CoinDemoStream } from './stream/coin-demo';
 import { fetchCoinInfo, heliusHttpUrl } from './stream/coin-info';
 import { DemoStream } from './stream/demo-stream';
@@ -13,7 +13,9 @@ import { Renderer } from './viz/renderer';
 
 // ------------------------------------------------------------------ settings
 
-type Source = 'public' | 'custom' | 'demo';
+type Source = 'relay' | 'public' | 'custom' | 'demo';
+/** Without a deployed relay, the free choice that works from a website is the demo. */
+const DEFAULT_SOURCE: Source = RELAY_WS_URL ? 'relay' : 'demo';
 interface Settings {
   source: Source;
   endpoint: string | null; // only stored when the user ticks "remember"
@@ -25,7 +27,7 @@ interface Settings {
 const STORAGE_KEY = 'slotwave.settings.v1';
 
 function loadSettings(): Settings {
-  const fallback: Settings = { source: 'public', endpoint: null, gains: { ...DEFAULT_GAINS }, master: 0.9, delay: MUSIC.defaultDelayMs, lastCoins: [] };
+  const fallback: Settings = { source: DEFAULT_SOURCE, endpoint: null, gains: { ...DEFAULT_GAINS }, master: 0.9, delay: MUSIC.defaultDelayMs, lastCoins: [] };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return fallback;
@@ -36,7 +38,7 @@ function loadSettings(): Settings {
       if (typeof v === 'number' && v >= 0 && v <= 1.5) gains[ch] = v;
     }
     return {
-      source: s.source === 'custom' || s.source === 'demo' ? s.source : 'public',
+      source: s.source === 'custom' || s.source === 'demo' || s.source === 'public' || (s.source === 'relay' && RELAY_WS_URL) ? s.source : DEFAULT_SOURCE,
       endpoint: typeof s.endpoint === 'string' && isValidWsUrl(s.endpoint) ? s.endpoint : null,
       gains,
       master: typeof s.master === 'number' ? Math.min(1.2, Math.max(0, s.master)) : fallback.master,
@@ -359,7 +361,7 @@ let statsTimer: ReturnType<typeof setInterval> | null = null;
 
 function selectedSource(): Source {
   const el = document.querySelector<HTMLInputElement>('input[name="source"]:checked');
-  return (el?.value as Source | undefined) ?? 'public';
+  return (el?.value as Source | undefined) ?? DEFAULT_SOURCE;
 }
 
 async function start(mode: 'coin' | 'market' = 'coin'): Promise<void> {
@@ -387,6 +389,12 @@ async function start(mode: 'coin' | 'market' = 'coin'): Promise<void> {
     settings.lastCoins = list.mints;
   }
 
+  if (mode === 'market' && source === 'relay') {
+    errorEl.textContent = 'The whole market is too much data for the shared relay. Use your own endpoint or the demo.';
+    errorEl.hidden = false;
+    return;
+  }
+
   const url = $<HTMLInputElement>('endpoint').value.trim();
   if (source === 'custom') {
     if (!isValidWsUrl(url)) {
@@ -410,12 +418,13 @@ async function start(mode: 'coin' | 'market' = 'coin'): Promise<void> {
   }
   engine.setMasterVolume(settings.master);
 
-  const endpoints = source === 'custom' ? url : DEFAULT_WS_ENDPOINTS;
+  const endpoints = source === 'custom' ? url : source === 'relay' ? RELAY_WS_URL : DEFAULT_WS_ENDPOINTS;
+  const name = source === 'relay' ? 'Slotwave relay' : undefined;
   if (target.kind === 'coins') {
     const mints = target.mints;
     engine.setCoins(mints);
     trackers = new Map(mints.map((m) => [m, new CoinTracker()]));
-    stream = source === 'demo' ? new CoinDemoStream(handlers, mints) : new RpcStream(endpoints, handlers, target);
+    stream = source === 'demo' ? new CoinDemoStream(handlers, mints) : new RpcStream(endpoints, handlers, target, name);
     buildCoinRows(mints);
     showCoinBar(mints);
     if (source === 'custom') for (const m of mints) void lookUpName(url, m);
@@ -555,6 +564,7 @@ function buildMixer(): void {
 }
 
 function initIntro(): void {
+  $('relay-option').hidden = !RELAY_WS_URL;
   const radios = document.querySelectorAll<HTMLInputElement>('input[name="source"]');
   const customBox = $('custom-box');
   const sync = () => {

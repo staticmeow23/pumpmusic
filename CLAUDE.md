@@ -8,7 +8,7 @@
 **Nutzer:** spricht Deutsch (Antworten auf Deutsch, Code/Kommentare auf Englisch). Möchte, dass Claude selbst entscheidet, wie viel Aufwand eine Frage braucht. Arbeitet parallel an „Rug Guard“ (Telegram-Bot, gleicher Stack: TypeScript, Helius) – Decoder und Insider-Wissen könnten später geteilt werden.
 
 **Entscheidungen**
-- **Kurswechsel (Okt. 2026, nach Live-Test 2):** Hauptmodus ist jetzt „CA(s) eingeben → diese Coins hören“ (bis `MAX_COINS` = 5, endgültige Zahl offen). Grund: Der ganze Markt liefert ~2,3 MB/s (unbezahlbar, Musik nur Rauschen); ein Coin braucht grob 1–60 KB/s. Der Marktmodus bleibt als „Explore the whole market“.
+- **Kurswechsel (Okt. 2026, nach Live-Test 2):** Hauptmodus ist jetzt „CA(s) eingeben → diese Coins hören“ (bis `MAX_COINS` = 3, vom Nutzer festgelegt; das Relay erzwingt dieselbe Zahl pro Zuhörer). Grund: Der ganze Markt liefert ~2,3 MB/s (unbezahlbar, Musik nur Rauschen); ein Coin braucht grob 1–60 KB/s. Der Marktmodus bleibt als „Explore the whole market“.
 - Coin-Modus: ein `logsSubscribe` mit `mentions: [mint]` pro Coin auf derselben Verbindung + `slotSubscribe`. Melodie = Kurs (1 Pentatonik-Schritt pro 3 % gegenüber einem mitwandernden Bezugspreis, Halbwertszeit 3 min), jeder Coin eigene Farbe (`COIN_COLORS`, Reihenfolge der Eingabe), eigene Tonlage, eigene Stereo-/Bildspalte. Kauf = gefüllte Blase + Glocke, Verkauf = Ring + Zupfen. Blasen zeigen „$TICKER ±Betrag“, Klick öffnet die Transaktion auf Solscan.
 - PumpSwap-Events nennen nur den Pool: Pool→Coin wird gelernt, wenn eine Tx des Coins genau einen unbekannten Pool handelt und der Coin nicht (mehr) auf der Curve ist.
 - Ticker eines bestehenden Coins: nur mit Helius-Endpunkt per DAS `getAsset` (ein Aufruf pro Coin), sonst kurze CA.
@@ -40,7 +40,9 @@
 
 - **Coin-Modus (Okt. 2026):** CA-Eingabe (auch mehrere, auch pump.fun-/Solscan-Links), teilbarer Link `#coins=A,B`, Kursmelodie, Stats pro Coin (Market Cap, Änderung seit Start, Curve-Fortschritt, Buys/Sells pro Minute), Demo mit simulierten Curves (x·y=k) inkl. Graduation. Getestet: Unit-Tests, Headless (Demo 3 Coins, Fake-RPC mit echtem Fixture-Coin: 33,8 SOL / 12,2 % korrekt, Marktmodus, Mobile). **Noch nicht live getestet.**
 
-**Datenquellen für Zuhörer ohne eigenen Key (recherchiert Okt. 2026, noch nicht entschieden)**
+- **Relay (Okt. 2026, vom Nutzer gewählt):** `relay/` = Cloudflare Worker + ein Durable Object (`Hub` in `relay/src/hub.ts`, rein und getestet). Spricht das PubSub-Subset der App (logsSubscribe mit genau einer Adresse, slotSubscribe, Unsubscribes), ein Upstream-Abo pro Coin für alle Zuhörer, Upstream zu nach 30 s ohne Zuhörer, Reconnect mit Backoff, Limits: 3 Coins/Zuhörer, 25 Coins, 200 Zuhörer, 1,5 GB/Tag Budget, 30 MB/min pro Adresse. Lokal mit `wrangler dev` + Fake-RPC Ende-zu-Ende getestet (2 Zuhörer → 1 Upstream). **Noch nicht bei Cloudflare deployt:** Nutzer folgt `relay/README.md`, schickt die workers.dev-Adresse → `RELAY_WS_URL` in `src/config.ts` setzen (`wss://…/ws`).
+
+**Datenquellen für Zuhörer ohne eigenen Key (recherchiert Okt. 2026; entschieden: eigenes Relay)**
 - Öffentlicher RPC: blockt Websites (Live-Test 1) → raus.
 - PumpPortal: seit 1.5.2026 `subscribeTokenTrade` nur mit API-Key + Wallet, 0,01 SOL pro 10.000 Trades; NewToken/Migration gratis. Key muss geheim bleiben → braucht Server.
 - pumpdev.io: anonym 5 Abos, 20 Mints/Aufruf, 1 Verbindung/IP, 10k Trade-Nachrichten/Monat; Gratis-Key 50k/Monat; ab 49 $/Monat 1,5 Mio. Drittanbieter, Browser-Tauglichkeit ungeprüft.

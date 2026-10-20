@@ -46,6 +46,12 @@ export const INITIAL_REAL_TOKEN_RESERVES = 793_100_000_000_000;
  */
 export const DEFAULT_WS_ENDPOINTS = ['wss://api.mainnet.solana.com', 'wss://api.mainnet-beta.solana.com'] as const;
 
+/**
+ * The Slotwave relay (relay/ in this repo, a Cloudflare Worker holding the
+ * Helius key). Empty until it is deployed; the app then hides the option.
+ */
+export const RELAY_WS_URL = '';
+
 /** Mainnet has no warmup epochs, so epoch = floor(slot / SLOTS_PER_EPOCH). */
 export const SLOTS_PER_EPOCH = 432_000;
 /** Each leader produces this many consecutive slots (one musical beat). */
@@ -107,10 +113,10 @@ export const FEED = {
 
 /**
  * How many coins can be heard at once. Each is one logsSubscribe on the same
- * connection, so data (and Helius credits) grow with every coin. Open question
- * with the user (Oct 2026): what the right limit is.
+ * connection, so data (and Helius credits) grow with every coin. Set by the
+ * user (Oct 2026); the relay enforces the same number per listener.
  */
-export const MAX_COINS = 5;
+export const MAX_COINS = 3;
 
 /** One colour per coin, in the order the coins were entered (RGB triplets for canvas). */
 export const COIN_COLORS = [

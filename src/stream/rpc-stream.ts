@@ -92,6 +92,7 @@ export class RpcStream implements Stream {
     urls: string | readonly string[],
     private readonly handlers: StreamHandlers,
     target: StreamTarget = { kind: 'market' },
+    private readonly displayName?: string,
   ) {
     this.urls = typeof urls === 'string' ? [urls] : urls;
     this.requests = requestsFor(target);
@@ -102,7 +103,7 @@ export class RpcStream implements Stream {
   }
 
   get label(): string {
-    return maskEndpoint(this.url);
+    return this.displayName ?? maskEndpoint(this.url);
   }
 
   start(): void {

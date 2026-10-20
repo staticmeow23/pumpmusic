@@ -1,7 +1,7 @@
 # Slotwave – pump.fun als Musik
 
 CA eintragen, zuhören: Jeder Trade deiner Coins wird live zu einem Ton und einer Blase, im Takt von Solanas Slots.
-Die Melodie folgt dem Kurs. Bis zu 5 Coins gleichzeitig, jeder in seiner Farbe.
+Die Melodie folgt dem Kurs. Bis zu 3 Coins gleichzeitig, jeder in seiner Farbe.
 Inspiriert von BitListen („Listen to Bitcoin“) und „Listen to Wikipedia“.
 
 **Kosten: 0 €.** Die App ist eine einzige HTML-Datei, die sich direkt mit dem kostenlosen
@@ -59,7 +59,7 @@ Optionen: `--drop-after=6` (Verbindung bricht nach 6 s ab), `--refuse-logs` (RPC
 ## Coins hören (Hauptmodus)
 
 - Eine oder mehrere **Contract Addresses (CA)** eintragen, getrennt durch Zeilen, Leerzeichen oder Kommas.
-  pump.fun- und Solscan-Links funktionieren auch. Höchstens `MAX_COINS` (5) auf einmal.
+  pump.fun- und Solscan-Links funktionieren auch. Höchstens `MAX_COINS` (3) auf einmal.
 - **Melodie = Kurs:** Jeder 3-%-Schritt über oder unter dem „Zuhause“-Preis ist ein Tonleiterschritt. Das Zuhause
   wandert langsam mit (Halbwertszeit 3 Minuten): Ein Pump steigt, ein Dump fällt, ein langes Plateau kehrt zur Mitte zurück.
 - **Jeder Coin hat seine Farbe, Tonlage und Spalte** (links → rechts in der Reihenfolge der Eingabe).
@@ -68,6 +68,12 @@ Optionen: `--drop-after=6` (Verbindung bricht nach 6 s ab), `--refuse-logs` (RPC
 - **Stats** pro Coin: Market Cap, Änderung seit dem Einschalten, Bonding-Curve-Fortschritt, Käufe/Verkäufe pro Minute.
 - Der Link `#coins=<CA1>,<CA2>` öffnet die Seite mit diesen Coins.
 - Ticker eines Coins, der schon vor dem Einschalten existierte: nur mit Helius-Endpunkt (ein `getAsset`-Aufruf), sonst steht dort die gekürzte CA.
+
+## Relay (Daten ohne eigenen Key)
+
+`relay/` ist ein Cloudflare Worker, der eine Helius-Verbindung hält und an alle Zuhörer verteilt
+(ein Abo pro Coin, egal wie viele zuhören; Key bleibt geheim; Tagesbudget). Einrichtung: [relay/README.md](relay/README.md).
+Sobald es läuft und `RELAY_WS_URL` in `src/config.ts` gesetzt ist, ist „Slotwave relay“ die Standard-Quelle.
 
 ## Ganzer Markt (Explore)
 
