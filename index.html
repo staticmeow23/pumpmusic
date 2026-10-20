@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Slotwave</title>
+    <meta name="description" content="Hear pump.fun live: every trade becomes a note, in time with Solana's slots." />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%235eead4' fill-opacity='.35' stroke='%235eead4' stroke-width='2'/%3E%3C/svg%3E" />
+    <!--STYLES-->
+  </head>
+  <body>
+    <canvas id="stage" aria-label="Live visualisation of pump.fun trades"></canvas>
+
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo" aria-hidden="true"></span>
+        <span class="name">slotwave</span>
+        <span class="sub">pump.fun</span>
+      </div>
+      <div id="status" class="pill" data-state="idle"><span class="dot"></span><span id="status-text">Not connected</span></div>
+      <nav class="actions" id="actions" hidden>
+        <button type="button" id="btn-stats" aria-pressed="true" title="Stats (S)">Stats</button>
+        <button type="button" id="btn-mixer" aria-pressed="false" title="Mixer (X)">Mixer</button>
+        <button type="button" id="btn-mute" aria-pressed="false" title="Mute (M)">Mute</button>
+        <button type="button" id="btn-stop" class="quiet">Stop</button>
+      </nav>
+    </header>
+
+    <section id="intro" class="overlay">
+      <div class="card">
+        <h1>Hear pump.fun, live.</h1>
+        <p class="lede">
+          Every trade on pump.fun becomes a note, in time with Solana's slots. Big trades sound deep, small ones ring high.
+          Buyers in control make the key brighter, sellers make it darker.
+        </p>
+
+        <ul class="legend">
+          <li><i class="sw buy"></i><b>Buy</b> bell</li>
+          <li><i class="sw sell"></i><b>Sell</b> plucked string</li>
+          <li><i class="sw ring"></i><b>Graduated coin</b> electric piano</li>
+          <li><i class="sw star"></i><b>New coin</b> sparkle</li>
+          <li><i class="sw gold"></i><b>Graduation</b> string swell</li>
+          <li><i class="sw beat"></i><b>Slot clock</b> 4 slots = 1 beat</li>
+        </ul>
+
+        <fieldset class="source">
+          <legend>Data source</legend>
+          <label><input type="radio" name="source" value="public" checked /> Public Solana RPC <span class="tag">free</span></label>
+          <label><input type="radio" name="source" value="custom" /> My own endpoint <span class="tag">Helius, QuickNode, …</span></label>
+          <label><input type="radio" name="source" value="demo" /> Demo <span class="tag">simulated, offline</span></label>
+          <div id="custom-box" class="custom" hidden>
+            <input id="endpoint" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="wss://mainnet.helius-rpc.com/?api-key=…" />
+            <label class="small"><input id="remember" type="checkbox" /> Remember on this device</label>
+          </div>
+          <p id="source-error" class="error" role="alert" hidden></p>
+        </fieldset>
+
+        <button type="button" id="btn-start" class="primary">Start listening</button>
+        <p class="fineprint">
+          Sound starts after your click (browser rule). The free public endpoint is rate-limited and not meant for production;
+          if it refuses or drops, try again later, use the demo, or paste your own endpoint.
+          Click a bubble to open the coin. Not financial advice.
+        </p>
+      </div>
+    </section>
+
+    <aside id="stats" class="panel left" hidden aria-label="Statistics">
+      <h2>Market <small>60 s average</small></h2>
+      <dl>
+        <dt>Trades</dt><dd><b id="s-trades">–</b>/s</dd>
+        <dt>Curve buys · sells</dt><dd><span id="s-cbuys">–</span> · <span id="s-csells">–</span>/s</dd>
+        <dt>PumpSwap trades</dt><dd><span id="s-swap">–</span>/s</dd>
+        <dt>New coins</dt><dd><span id="s-creates">–</span>/min</dd>
+        <dt>Graduations</dt><dd><span id="s-grads">0</span> this session</dd>
+        <dt>Failed tx</dt><dd><span id="s-failed">–</span>/s</dd>
+      </dl>
+      <h2>Music</h2>
+      <dl>
+        <dt>Key</dt><dd id="s-key">–</dd>
+        <dt>Mood</dt><dd><span class="meter"><span id="s-mood"></span></span></dd>
+        <dt>Slot time</dt><dd><span id="s-slotms">–</span> ms<span id="s-slotfeed" class="hint"></span></dd>
+        <dt>Notes · merged</dt><dd><span id="s-notes">0</span> · <span id="s-merged">0</span></dd>
+        <dt>Late</dt><dd><span id="s-late">0 %</span><span id="s-late-hint" class="hint"></span></dd>
+      </dl>
+      <h2>Data &amp; cost</h2>
+      <dl>
+        <dt>Stream</dt><dd><span id="s-rate">–</span>/s<span id="s-rate-note" class="hint"></span></dd>
+        <dt>Per day</dt><dd id="s-day">–</dd>
+        <dt>On Helius</dt><dd>≈ <span id="s-credits">–</span> credits/mo</dd>
+        <dt>Free plan</dt><dd><span id="s-free">–</span> of 1M</dd>
+        <dt>Decoder</dt><dd class="mono" id="s-decoder">–</dd>
+      </dl>
+    </aside>
+
+    <aside id="mixer" class="panel right" hidden aria-label="Mixer">
+      <h2>Mixer</h2>
+      <div id="mixer-rows"></div>
+      <h2>Timing</h2>
+      <label class="row">
+        <span>Buffer</span>
+        <input id="delay" type="range" min="400" max="4000" step="100" />
+        <output id="delay-out">–</output>
+      </label>
+      <p class="hint block">More buffer = fewer late notes, more delay behind the chain.</p>
+    </aside>
+
+    <div id="toast" class="toast" role="status" hidden></div>
+    <!--SCRIPT-->
+  </body>
+</html>
