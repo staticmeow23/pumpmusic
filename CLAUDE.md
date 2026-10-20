@@ -22,7 +22,7 @@
 - PumpSwap Buy/SellEvent enthalten keine Mint, nur den Pool → Mapping Pool→Mint über CreatePoolEvent/Migration.
 - Solana-Slotzeit seit 9.10.2026: 200 ms (SIMD-0525). Alpenglow (Finalität ~100–150 ms) für Agave 4.3 geplant – Datum prüfen.
 - Helius: Free 1 Mio. Credits/Monat, Developer 49 $ / 10 Mio.; WebSocket-Streaming 2 Credits pro 0,1 MB; Free-Plan 5 gleichzeitige Verbindungen.
-- Echte Pump-Logs: ca. 5–7 KB pro Transaktion → bei ~12–15 Tx/s grob 80–120 KB/s pro Zuhörer (0,3–0,4 GB/h) bzw. 4–7 Mio. Helius-Credits/Monat. Das Kosten-Panel misst den echten Wert.
+- Echte Pump-Logs: ca. 5–7 KB pro Transaktion. Die frühere Schätzung (12–15 Tx/s, 80–120 KB/s) ist durch Live-Test 2 widerlegt: real ~2,3 MB/s (siehe Status).
 
 **Status**
 - Fertig: Decoder + Log-Parser, WebSocket-Stream (Reconnect mit Backoff, Watchdog, Dedupe, API-Key-Maskierung), Demo-Stream, Slot-Uhr (Regression, Reset bei Sprüngen), Musiktheorie, 13 Instrumente + Pad, Engine, BitListen-artige Blasen-Visualisierung, Statistik-/Kosten-Panel, Mixer, Mobile-Layout, Fake-RPC (`scripts/mock-rpc.mjs`) mit echten Logs.
@@ -32,7 +32,7 @@
 
 - Fokus-Modus (Blase anklicken → nur dieser Coin, `#coin=<mint>` teilbar), Feed (Ereignis-Log), Hilfekarte bei wiederholter RPC-Ablehnung (Okt. 2026).
 - **Live-Test 1 (Nutzer, Okt. 2026):** `api.mainnet.solana.com` und `mainnet-beta` schließen die Verbindung von github.io sofort (1006). Vermutlich Website-/Origin-Sperre (Solana-Doku: 403 = IP oder Website gesperrt). Nächster Versuch: eigener Helius-Key (Free-Plan reicht für ~100+ h/Monat).
-- **Live-Test 2 (Nutzer, Okt. 2026):** Mit eigenem Helius-Key („My own endpoint“) funktioniert der Live-Stream. Messwerte aus dem Stats-Panel stehen noch aus.
+- **Live-Test 2 (Nutzer, Okt. 2026):** Mit eigenem Helius-Key („My own endpoint“) funktioniert der Live-Stream. **Gemessen (60-s-Mittel):** 325 Trades/s (Curve 38,5 Buys + 35 Sells, PumpSwap 252/s), 605 fehlgeschlagene Tx/s, 46 neue Coins/min, Stream **2,3 MB/s** (≈ 200 GB/Tag, ≈ 120 Mio. Helius-Credits/Monat bei Dauerbetrieb), Slotzeit 225 ms, Late 0 %, Decoder fallback 142 / foreign 100.299 / bad 0, Notes 5,7K vs. merged 58,3K. → Die Annahme 12–15 Tx/s war ~20× zu niedrig; der Helius-Free-Plan (50 GB) reicht nur für ~6 h Zuhören im Monat. Hauptlast: PumpSwap-Bot-/Arbitrage-Trades und fehlgeschlagene Bot-Tx.
 
 **Ideen aus ähnlichen Projekten (Backlog, Okt. 2026 recherchiert)**
 - Listen to Wikipedia (hatnote): Position per Seed aus dem Titel (gleicher Coin = gleiche Stelle); Zähler „You have listened to N trades“; Einstellungen per URL-Hash; Rate gewichtet über 6×10-s-Buckets; harte Obergrenze gleichzeitiger Noten (haben wir).
