@@ -40,6 +40,12 @@
 
 - **Coin-Modus (Okt. 2026):** CA-Eingabe (auch mehrere, auch pump.fun-/Solscan-Links), teilbarer Link `#coins=A,B`, Kursmelodie, Stats pro Coin (Market Cap, Änderung seit Start, Curve-Fortschritt, Buys/Sells pro Minute), Demo mit simulierten Curves (x·y=k) inkl. Graduation. Getestet: Unit-Tests, Headless (Demo 3 Coins, Fake-RPC mit echtem Fixture-Coin: 33,8 SOL / 12,2 % korrekt, Marktmodus, Mobile). **Noch nicht live getestet.**
 
+**Datenquellen für Zuhörer ohne eigenen Key (recherchiert Okt. 2026, noch nicht entschieden)**
+- Öffentlicher RPC: blockt Websites (Live-Test 1) → raus.
+- PumpPortal: seit 1.5.2026 `subscribeTokenTrade` nur mit API-Key + Wallet, 0,01 SOL pro 10.000 Trades; NewToken/Migration gratis. Key muss geheim bleiben → braucht Server.
+- pumpdev.io: anonym 5 Abos, 20 Mints/Aufruf, 1 Verbindung/IP, 10k Trade-Nachrichten/Monat; Gratis-Key 50k/Monat; ab 49 $/Monat 1,5 Mio. Drittanbieter, Browser-Tauglichkeit ungeprüft.
+- Eigenes Relay mit Helius-Key auf Cloudflare (Worker + Durable Object): Free 100k Requests/Tag, 13.000 GB-s/Tag; eingehende WS-Nachrichten 20:1 berechnet, ausgehende gratis; ausgehende WS (zu Helius) verhindert Hibernation → Laufzeit wird berechnet (ein DO mit 128 MB rund um die Uhr ≈ 11.000 GB-s/Tag, knapp im Free-Tier). Helius-Kosten pro Coin-Stunde statt pro Zuhörer. Ob Cloudflare-Free für ausgehende WS reicht: ungeprüft, nur per Test.
+
 **Ideen aus ähnlichen Projekten (Backlog, Okt. 2026 recherchiert)**
 - Listen to Wikipedia (hatnote): Position per Seed aus dem Titel (gleicher Coin = gleiche Stelle); Zähler „You have listened to N trades“; Einstellungen per URL-Hash; Rate gewichtet über 6×10-s-Buckets; harte Obergrenze gleichzeitiger Noten (haben wir).
 - BitListen: Preis-Ticker (SOL/USD) – braucht externe Quelle, Kosten/Abhängigkeit vorher klären; Mindestgröße-Filter („nur Wale“); Instrumentwahl.
