@@ -1,6 +1,7 @@
 # Slotwave – pump.fun als Musik
 
-Jeder Trade auf pump.fun wird live zu einem Ton und einer Blase, im Takt von Solanas Slots.
+CA eintragen, zuhören: Jeder Trade deiner Coins wird live zu einem Ton und einer Blase, im Takt von Solanas Slots.
+Die Melodie folgt dem Kurs. Bis zu 5 Coins gleichzeitig, jeder in seiner Farbe.
 Inspiriert von BitListen („Listen to Bitcoin“) und „Listen to Wikipedia“.
 
 **Kosten: 0 €.** Die App ist eine einzige HTML-Datei, die sich direkt mit dem kostenlosen
@@ -55,7 +56,25 @@ Optionen: `--drop-after=6` (Verbindung bricht nach 6 s ab), `--refuse-logs` (RPC
 - **Takt = Netzwerk:** Die Uhr misst die echte Slot-Zeit (Regression über die letzte Minute). 4 Slots = 1 Schlag ≈ 75 BPM.
 - **Puffer:** Slot S erklingt bei „Zeitpunkt von S + Puffer“ (Standard 1,2 s). So landen auch spät eintreffende Trades auf ihrem Slot und die Reihenfolge der Chain bleibt erhalten. Pro Slot spielt jedes Instrument höchstens 2 Noten; alles darüber wird trotzdem gezeichnet und macht das Pad heller.
 
-## Bedienen
+## Coins hören (Hauptmodus)
+
+- Eine oder mehrere **Contract Addresses (CA)** eintragen, getrennt durch Zeilen, Leerzeichen oder Kommas.
+  pump.fun- und Solscan-Links funktionieren auch. Höchstens `MAX_COINS` (5) auf einmal.
+- **Melodie = Kurs:** Jeder 3-%-Schritt über oder unter dem „Zuhause“-Preis ist ein Tonleiterschritt. Das Zuhause
+  wandert langsam mit (Halbwertszeit 3 Minuten): Ein Pump steigt, ein Dump fällt, ein langes Plateau kehrt zur Mitte zurück.
+- **Jeder Coin hat seine Farbe, Tonlage und Spalte** (links → rechts in der Reihenfolge der Eingabe).
+  Kauf = gefüllte Blase + Glocke, Verkauf = Ring + gezupfte Saite. Jede Blase zeigt `$TICKER +0.52 SOL`.
+  Klick auf eine Blase öffnet die Transaktion auf Solscan.
+- **Stats** pro Coin: Market Cap, Änderung seit dem Einschalten, Bonding-Curve-Fortschritt, Käufe/Verkäufe pro Minute.
+- Der Link `#coins=<CA1>,<CA2>` öffnet die Seite mit diesen Coins.
+- Ticker eines Coins, der schon vor dem Einschalten existierte: nur mit Helius-Endpunkt (ein `getAsset`-Aufruf), sonst steht dort die gekürzte CA.
+
+## Ganzer Markt (Explore)
+
+Über „Or explore the whole market“. Live gemessen: ~325 Trades/s und ~2,3 MB/s – als Musik eher Rauschen und für
+Helius teuer. Gedacht zum Reinhören, vor allem mit der Demo.
+
+## Bedienen (Marktmodus)
 
 - **Blase anklicken = nur noch diesen Coin hören** (wie der Tag-Filter bei „Listen to Wikipedia“).
   Alle anderen Trades werden leise und blass, damit man den Markt drumherum noch sieht. Oben steht
@@ -108,7 +127,11 @@ src/
   viz/renderer.ts        Canvas mit Blasen, Wellen und Slot-Leiste
   ui/metrics.ts          Raten, Kostenabschätzung
   ui/feed.ts             Zeilen fürs Ereignis-Log
-  ui/focus.ts            teilbarer Fokus-Link (#coin=…)
+  ui/focus.ts            CA-Eingabe, teilbare Links (#coins=…)
+  ui/coin-stats.ts       Market Cap, Änderung, Curve-Fortschritt pro Coin
+  ui/labels.ts           Blasen-Beschriftung „$TICKER ±Betrag“
+  stream/coin-demo.ts    simulierte Coins mit echter Curve-Formel (x·y=k)
+  stream/coin-info.ts    Ticker per Helius getAsset
   main.ts                Oberfläche
 scripts/build.mjs        baut alles in eine einzige dist/index.html
 scripts/mock-rpc.mjs     Fake-RPC für Offline-Tests

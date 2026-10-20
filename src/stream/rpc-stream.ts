@@ -1,24 +1,38 @@
 import { PROGRAMS, STREAM } from '../config';
 import { parseLogs } from '../pump/logs';
 import { RecentSet } from './dedupe';
-import type { Stream, StreamHandlers } from './types';
+import type { Stream, StreamHandlers, StreamTarget } from './types';
 
-type SubKind = 'curve' | 'swap' | 'slot';
+type LogKind = 'curve' | 'swap' | 'coin';
+type SubKind = LogKind | 'slot';
+interface Request {
+  id: number;
+  kind: SubKind;
+  /** The mentioned address of a logs subscription. */
+  address: string | null;
+  body: object;
+}
 
-/** Request ids for the three subscriptions we open on every connection. */
-const REQUESTS: { id: number; kind: SubKind; body: object }[] = [
-  {
-    id: 1,
-    kind: 'curve',
-    body: { method: 'logsSubscribe', params: [{ mentions: [PROGRAMS.pumpCurve] }, { commitment: 'processed' }] },
-  },
-  {
-    id: 2,
-    kind: 'swap',
-    body: { method: 'logsSubscribe', params: [{ mentions: [PROGRAMS.pumpSwap] }, { commitment: 'processed' }] },
-  },
-  { id: 3, kind: 'slot', body: { method: 'slotSubscribe', params: [] } },
-];
+const logsRequest = (id: number, kind: LogKind, address: string): Request => ({
+  id,
+  kind,
+  address,
+  body: { method: 'logsSubscribe', params: [{ mentions: [address] }, { commitment: 'processed' }] },
+});
+
+/**
+ * The subscriptions opened on every connection. Each coin is one logsSubscribe
+ * on its mint (the method takes a single address): every transaction that
+ * touches the mint, on the curve and on PumpSwap (whose swaps list the base
+ * mint as an account).
+ */
+function requestsFor(target: StreamTarget): Request[] {
+  const logs =
+    target.kind === 'coins'
+      ? target.mints.map((m, i) => logsRequest(i + 1, 'coin', m))
+      : [logsRequest(1, 'curve', PROGRAMS.pumpCurve), logsRequest(2, 'swap', PROGRAMS.pumpSwap)];
+  return [...logs, { id: 0, kind: 'slot', address: null, body: { method: 'slotSubscribe', params: [] } }];
+}
 
 /** Hides API keys (e.g. Helius `?api-key=...`) before an endpoint is shown or logged. */
 export function maskEndpoint(url: string): string {
@@ -59,7 +73,8 @@ export class RpcStream implements Stream {
   /** Incremented per connection so callbacks from an old socket are ignored. */
   private generation = 0;
   private attempt = 0;
-  private subs = new Map<number, SubKind>();
+  /** Server subscription id -> the request it confirmed. */
+  private subs = new Map<number, Request>();
   private seen = new RecentSet(STREAM.dedupeSize);
   private lastMessageAt = 0;
   private gotData = false;
@@ -67,6 +82,7 @@ export class RpcStream implements Stream {
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = true;
   private readonly urls: readonly string[];
+  private readonly requests: Request[];
   /** Which of `urls` is in use; moves on when an endpoint never goes live. */
   private urlIndex = 0;
   private wentLive = false;
@@ -75,8 +91,10 @@ export class RpcStream implements Stream {
   constructor(
     urls: string | readonly string[],
     private readonly handlers: StreamHandlers,
+    target: StreamTarget = { kind: 'market' },
   ) {
     this.urls = typeof urls === 'string' ? [urls] : urls;
+    this.requests = requestsFor(target);
   }
 
   private get url(): string {
@@ -129,7 +147,7 @@ export class RpcStream implements Stream {
     socket.onopen = () => {
       if (gen !== this.generation) return;
       this.lastMessageAt = performance.now();
-      for (const r of REQUESTS) socket.send(JSON.stringify({ jsonrpc: '2.0', id: r.id, ...r.body }));
+      for (const r of this.requests) socket.send(JSON.stringify({ jsonrpc: '2.0', id: r.id, ...r.body }));
     };
 
     socket.onmessage = (msg: MessageEvent) => {
@@ -193,7 +211,7 @@ export class RpcStream implements Stream {
     // Subscription confirmations and errors.
     if (typeof msg.id === 'number') {
       this.handlers.onBytes(data.length, 'other');
-      const req = REQUESTS.find((r) => r.id === msg.id);
+      const req = this.requests.find((r) => r.id === msg.id);
       if (!req) return;
       if (msg.error) {
         const text = msg.error.message ?? `code ${msg.error.code ?? '?'}`;
@@ -202,9 +220,10 @@ export class RpcStream implements Stream {
         this.scheduleReconnect(`subscription refused: ${text}`);
         return;
       }
-      if (typeof msg.result === 'number') this.subs.set(msg.result, req.kind);
-      const kinds = new Set(this.subs.values());
-      if (req.kind !== 'slot' && kinds.has('curve') && kinds.has('swap')) {
+      if (typeof msg.result === 'number') this.subs.set(msg.result, req);
+      const confirmed = new Set(this.subs.values());
+      const allLogs = this.requests.every((r) => r.kind === 'slot' || confirmed.has(r));
+      if (req.kind !== 'slot' && allLogs) {
         this.wentLive = true;
         this.handlers.onState({ kind: 'live', since: Date.now() });
       }
@@ -212,7 +231,8 @@ export class RpcStream implements Stream {
     }
 
     const sub = msg.params?.subscription;
-    const kind = typeof sub === 'number' ? this.subs.get(sub) : undefined;
+    const req = typeof sub === 'number' ? this.subs.get(sub) : undefined;
+    const kind = req?.kind;
     const now = performance.now();
 
     if (msg.method === 'slotNotification' && kind === 'slot') {
@@ -222,7 +242,7 @@ export class RpcStream implements Stream {
       return;
     }
 
-    if (msg.method === 'logsNotification' && (kind === 'curve' || kind === 'swap')) {
+    if (msg.method === 'logsNotification' && kind !== undefined && kind !== 'slot') {
       this.handlers.onBytes(data.length, 'logs');
       const result = msg.params?.result as
         | { context?: { slot?: unknown }; value?: { signature?: unknown; err?: unknown; logs?: unknown } }
@@ -237,7 +257,7 @@ export class RpcStream implements Stream {
         this.attempt = 0; // healthy again: next failure starts the backoff from scratch
       }
       const logs = value.logs.filter((l): l is string => typeof l === 'string');
-      this.handlers.onTx({ slot, signature: value.signature, receivedAt: now, parsed: parseLogs(logs, value.err) });
+      this.handlers.onTx({ slot, signature: value.signature, receivedAt: now, parsed: parseLogs(logs, value.err), mentions: kind === 'coin' ? req!.address : null });
       return;
     }
 

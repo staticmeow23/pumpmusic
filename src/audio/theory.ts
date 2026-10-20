@@ -93,6 +93,57 @@ export function tradeNote(slot: number, mode: Mode, tokenHash: number, impact: n
 }
 
 /**
+ * Melody for a single coin: the pitch follows the price. Each `priceStep`
+ * (3 %) above or below a home price is one scale step. Home follows the price
+ * slowly, so a pump climbs, a dump falls, and a long plateau drifts back to
+ * the middle instead of sticking at the top of the range.
+ */
+export class PriceMelody {
+  private homeLog: number | null = null;
+  private lastAt = 0;
+  private last = 0;
+
+  step(price: number | null, now: number): number {
+    if (price === null || !(price > 0) || !Number.isFinite(price)) return this.last;
+    const lp = Math.log(price);
+    if (this.homeLog === null) {
+      this.homeLog = lp;
+      this.lastAt = now;
+      this.last = 0;
+      return 0;
+    }
+    const c = MUSIC.coin;
+    const raw = Math.round((lp - this.homeLog) / Math.log(c.priceStep));
+    this.last = Math.max(c.minStep, Math.min(c.maxStep, raw));
+    const a = 1 - 0.5 ** (Math.max(0, now - this.lastAt) / c.priceHalfLifeMs);
+    this.homeLog += (lp - this.homeLog) * a;
+    this.lastAt = now;
+    return this.last;
+  }
+}
+
+/** Scale-step offset per coin, so several coins sing in different registers. */
+const REGISTERS = [0, 3, -3, 6, -5, 2, -2, 5];
+export function coinRegister(index: number): number {
+  return REGISTERS[index % REGISTERS.length]!;
+}
+
+/**
+ * Stereo position: coins are spread evenly from left to right (in the order
+ * they were entered), and each wallet sits a little off its coin's centre.
+ */
+export function coinPan(index: number, count: number, walletHash: number): number {
+  const centre = count <= 1 ? 0 : -0.5 + index / (count - 1);
+  const wobble = ((walletHash % 200) / 100 - 1) * (count <= 1 ? 0.6 : 0.15);
+  return Math.max(-0.85, Math.min(0.85, centre + wobble));
+}
+
+/** Note for a trade of the coin you listen to: buys and sells share one melodic line. */
+export function coinNote(slot: number, mode: Mode, step: number): number {
+  return scaleNote(slot, mode, step, 1);
+}
+
+/**
  * Exponentially decaying buy-vs-sell balance in [-1, 1]. Each trade adds its
  * weight (we use sqrt(impact) so one whale doesn't flip the mood alone).
  */

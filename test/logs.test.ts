@@ -124,7 +124,7 @@ test('truncated logs fall back to the instruction name', () => {
   const out = parseLogs(logs, null);
   assert.equal(out.fallbackTrades, 1);
   assert.deepEqual(out.events[0], {
-    kind: 'trade', venue: 'swap', side: 'sell', token: null, impact: null, lamports: null, user: null,
+    kind: 'trade', venue: 'swap', side: 'sell', token: null, impact: null, lamports: null, user: null, price: null, quote: null, progress: null, quoteAmount: null,
   });
 });
 
@@ -167,4 +167,34 @@ test('pool event decoder reads base mint and pool', async () => {
   const ev = (res as { event: PoolEvent }).event;
   assert.equal(ev.baseMint, bytesToBase58(key(2)));
   assert.equal(ev.pool, bytesToBase58(key(4)));
+});
+
+test('curve trades carry the price, the quote currency and the curve progress', () => {
+  const sol = parseLogs(fixture('pump-create-and-buy.json').logs, null).events.find((e): e is TradeEvent => e.kind === 'trade')!;
+  const w = expectedEvent('pump-create-and-buy.json', 'TradeEvent');
+  assert.equal(sol.quote, 'sol');
+  assert.ok(Math.abs(sol.price! - (w.virtual_sol_reserves as number) / (w.virtual_token_reserves as number)) < 1e-15);
+  assert.ok(Math.abs(sol.progress! - (1 - (w.real_token_reserves as number) / 793_100_000_000_000)) < 1e-12);
+
+  const usdc = parseLogs(fixture('pump-buy-v2.json').logs, null).events[0] as TradeEvent;
+  const u = expectedEvent('pump-buy-v2.json', 'TradeEvent');
+  assert.equal(usdc.quote, 'usdc');
+  assert.ok(Math.abs(usdc.price! - (u.virtual_quote_reserves as number) / (u.virtual_token_reserves as number)) < 1e-15);
+});
+
+test('PumpSwap trades carry the pool price, quote unknown', () => {
+  const t = parseLogs(fixture('pumpswap-sell.json').logs, null).events[0] as TradeEvent;
+  const w = expectedEvent('pumpswap-sell.json', 'SellEvent');
+  assert.ok(Math.abs(t.price! - (w.pool_quote_token_reserves as number) / (w.pool_base_token_reserves as number)) < 1e-15);
+  assert.equal(t.quote, null);
+  assert.equal(t.progress, null);
+});
+
+test('every trade carries its size in raw quote units', () => {
+  const sol = parseLogs(fixture('pump-create-and-buy.json').logs, null).events.find((e): e is TradeEvent => e.kind === 'trade')!;
+  assert.equal(sol.quoteAmount, expectedEvent('pump-create-and-buy.json', 'TradeEvent').sol_amount);
+  const usdc = parseLogs(fixture('pump-buy-v2.json').logs, null).events[0] as TradeEvent;
+  assert.equal(usdc.quoteAmount, expectedEvent('pump-buy-v2.json', 'TradeEvent').quote_amount);
+  const swap = parseLogs(fixture('pumpswap-sell.json').logs, null).events[0] as TradeEvent;
+  assert.equal(swap.quoteAmount, expectedEvent('pumpswap-sell.json', 'SellEvent').quote_amount_out);
 });

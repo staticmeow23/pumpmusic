@@ -1,10 +1,13 @@
 import { CHANNELS, DEFAULT_GAINS, MusicEngine, type Channel, type VisualNote } from './audio/engine';
-import { DEFAULT_WS_ENDPOINTS, FEED, MUSIC } from './config';
+import { COIN_COLORS, DEFAULT_WS_ENDPOINTS, FEED, HELIUS_CREDITS_PER_100KB, HELIUS_FREE_MONTHLY_CREDITS, MAX_COINS, MUSIC } from './config';
+import { CoinDemoStream } from './stream/coin-demo';
+import { fetchCoinInfo, heliusHttpUrl } from './stream/coin-info';
 import { DemoStream } from './stream/demo-stream';
 import { RpcStream, isValidWsUrl, maskEndpoint } from './stream/rpc-stream';
-import type { Stream, StreamState, TxMessage } from './stream/types';
+import type { Stream, StreamState, StreamTarget, TxMessage } from './stream/types';
+import { CoinTracker, formatChange, formatMarketCap } from './ui/coin-stats';
 import { feedLine, type FeedLine } from './ui/feed';
-import { coinFromHash, hashForCoin } from './ui/focus';
+import { coinsFromHash, hashForCoin, hashForCoins, parseCoinList } from './ui/focus';
 import { RateWindow, estimateCost, formatBytes, formatCompact } from './ui/metrics';
 import { Renderer } from './viz/renderer';
 
@@ -17,11 +20,12 @@ interface Settings {
   gains: Record<Channel, number>;
   master: number;
   delay: number;
+  lastCoins: string[];
 }
 const STORAGE_KEY = 'slotwave.settings.v1';
 
 function loadSettings(): Settings {
-  const fallback: Settings = { source: 'public', endpoint: null, gains: { ...DEFAULT_GAINS }, master: 0.9, delay: MUSIC.defaultDelayMs };
+  const fallback: Settings = { source: 'public', endpoint: null, gains: { ...DEFAULT_GAINS }, master: 0.9, delay: MUSIC.defaultDelayMs, lastCoins: [] };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return fallback;
@@ -37,6 +41,7 @@ function loadSettings(): Settings {
       gains,
       master: typeof s.master === 'number' ? Math.min(1.2, Math.max(0, s.master)) : fallback.master,
       delay: typeof s.delay === 'number' ? s.delay : fallback.delay,
+      lastCoins: Array.isArray(s.lastCoins) ? parseCoinList(s.lastCoins.filter((x) => typeof x === 'string').join(' ')).mints : [],
     };
   } catch {
     return fallback;
@@ -72,11 +77,12 @@ let activity = 0;
 const renderer = new Renderer(canvas, () => ({ mode: engine.stats().mode, activity }));
 engine.onVisual = (n) => {
   renderer.push(n);
-  const line = feedLine(n, engine.focused !== null);
+  const line = feedLine(n, engine.focused !== null, engine.coinMode);
   // The log line appears when the note sounds, not when the data arrives.
   if (line) setTimeout(() => addFeedLine(line), Math.max(0, n.at - performance.now()));
 };
 engine.onSlotMark = (m) => renderer.slot(m);
+engine.onCoinTrade = (ev, mint) => trackers.get(mint)?.add(ev, performance.now());
 
 // -------------------------------------------------------------------- metrics
 
@@ -89,6 +95,8 @@ const rates = {
   bytes: new RateWindow(),
 };
 let graduations = 0;
+/** Figures per coin being listened to (coin mode only), in the order entered. */
+let trackers = new Map<string, CoinTracker>();
 const decoder = { fallback: 0, foreign: 0, malformed: 0 };
 
 function onTx(tx: TxMessage): void {
@@ -104,7 +112,10 @@ function onTx(tx: TxMessage): void {
       else if (ev.side === 'buy') rates.curveBuys.add(1, now);
       else rates.curveSells.add(1, now);
     } else if (ev.kind === 'create') rates.creates.add(1, now);
-    else if (ev.kind === 'migrate') graduations++;
+    else if (ev.kind === 'migrate') {
+      graduations++;
+      trackers.get(ev.mint)?.markGraduated();
+    }
   }
   engine.handleTx(tx);
 }
@@ -115,7 +126,8 @@ function renderStats(): void {
   const cs = rates.curveSells.perSecond(now);
   const sw = rates.swap.perSecond(now);
   const total = cb + cs + sw;
-  activity = Math.min(1, total / 25);
+  activity = Math.min(1, total / MUSIC.marketActivityRef);
+  if (trackers.size) renderCoins(now);
   text('s-trades', total.toFixed(1));
   text('s-cbuys', cb.toFixed(1));
   text('s-csells', cs.toFixed(1));
@@ -141,9 +153,71 @@ function renderStats(): void {
   text('s-rate-note', stream instanceof DemoStream ? 'simulated' : '');
   text('s-day', `${cost.gbPerDay.toFixed(2)} GB`);
   text('s-credits', formatCompact(cost.heliusCreditsPerMonth));
-  text('s-free', `${(cost.freePlanShare * 100).toFixed(0)} %`);
+  // How long the Helius free plan lasts at this rate is easier to judge than a share of credits.
+  const creditsPerHour = ((bps * 3_600) / 100_000) * HELIUS_CREDITS_PER_100KB;
+  text('s-free', creditsPerHour > 0 ? formatCompact(HELIUS_FREE_MONTHLY_CREDITS / creditsPerHour) : '–');
   text('s-decoder', `fallback ${decoder.fallback} · foreign ${decoder.foreign} · bad ${decoder.malformed}`);
   refreshFocusName();
+}
+
+const coinColor = (i: number) => `rgb(${COIN_COLORS[i % COIN_COLORS.length]})`;
+const coinName = (mint: string) => {
+  const sym = engine.symbolOf(mint);
+  return sym ? `$${sym}` : shortAddress(mint);
+};
+
+/** One block per coin in the stats panel; built once, filled every refresh. */
+function buildCoinRows(mints: readonly string[]): void {
+  const rows = mints.map((mint, i) => {
+    const row = document.createElement('div');
+    row.className = 'coin-row';
+    row.dataset.mint = mint;
+    const name = document.createElement('div');
+    name.className = 'coin-name';
+    const dot = document.createElement('span');
+    dot.className = 'coin-dot';
+    dot.style.background = coinColor(i);
+    const link = document.createElement('a');
+    link.href = `https://pump.fun/coin/${mint}`;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.className = 'c-name';
+    name.append(dot, link);
+    const dl = document.createElement('dl');
+    for (const [label, cls] of [['Market cap', 'c-mcap'], ['Change', 'c-change change'], ['Bonding curve', 'c-progress'], ['Buys · sells', 'c-trades']] as const) {
+      const dt = document.createElement('dt');
+      dt.textContent = label;
+      const dd = document.createElement('dd');
+      dd.className = cls;
+      dd.textContent = '–';
+      dl.append(dt, dd);
+    }
+    row.append(name, dl);
+    return row;
+  });
+  $('coin-rows').replaceChildren(...rows);
+}
+
+function renderCoins(now: number): void {
+  let tradesPerMin = 0;
+  for (const row of $('coin-rows').children) {
+    const el = row as HTMLElement;
+    const mint = el.dataset.mint!;
+    const c = trackers.get(mint)?.snapshot(now);
+    if (!c) continue;
+    tradesPerMin += c.buysPerMin + c.sellsPerMin;
+    const set = (cls: string, value: string) => {
+      const target = el.querySelector(`.${cls}`);
+      if (target) target.textContent = value;
+    };
+    set('c-name', coinName(mint));
+    set('c-mcap', formatMarketCap(c.marketCap, c.quote));
+    set('c-change', formatChange(c.change));
+    (el.querySelector('.c-change') as HTMLElement).dataset.dir = c.change === null ? '' : c.change >= 0 ? 'up' : 'down';
+    set('c-progress', c.graduated ? 'graduated' : c.progress === null ? '–' : `${(c.progress * 100).toFixed(1)} %`);
+    set('c-trades', `${c.buysPerMin} · ${c.sellsPerMin}/min`);
+  }
+  activity = Math.min(1, tradesPerMin / 60 / (MUSIC.coin.activityRef * trackers.size));
 }
 
 // ----------------------------------------------------------------------- feed
@@ -192,17 +266,55 @@ function setFocus(coin: string | null, link: string | null): void {
   }
 }
 
-/** The ticker often arrives after the focus was set (with the coin's next create or trade). */
+/** Tickers often arrive later (with a create event or a metadata lookup). */
 function refreshFocusName(): void {
+  if (engine.coinMode) {
+    for (const chip of $('focus-name').querySelectorAll<HTMLElement>('.chip')) {
+      const label = chip.querySelector('.chip-name');
+      if (label) label.textContent = coinName(chip.dataset.mint!);
+    }
+    return;
+  }
   const coin = engine.focused;
-  if (!coin) return;
-  const sym = engine.symbolOf(coin);
-  text('focus-name', sym ? `$${sym}` : shortAddress(coin));
+  if (coin) text('focus-name', coinName(coin));
 }
 
 function onBubbleClick(note: VisualNote): void {
-  if (note.coin && note.coin !== engine.focused) setFocus(note.coin, note.link);
+  if (!engine.coinMode && note.coin && note.coin !== engine.focused) setFocus(note.coin, note.link);
   else if (note.link) window.open(note.link, '_blank', 'noopener,noreferrer');
+}
+
+/** Coin mode: the bar shows each coin in its colour (linked to pump.fun) and leads back to the address field. */
+function showCoinBar(mints: readonly string[]): void {
+  $('focusbar').hidden = false;
+  $<HTMLAnchorElement>('focus-link').hidden = true;
+  text('focus-label', 'Listening to');
+  const chips = document.createElement('span');
+  chips.className = 'chips';
+  mints.forEach((mint, i) => {
+    const a = document.createElement('a');
+    a.className = 'chip';
+    a.dataset.mint = mint;
+    a.href = `https://pump.fun/coin/${mint}`;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    const dot = document.createElement('span');
+    dot.className = 'coin-dot';
+    dot.style.background = coinColor(i);
+    const name = document.createElement('span');
+    name.className = 'chip-name';
+    a.append(dot, name);
+    chips.append(a);
+  });
+  $('focus-name').replaceChildren(chips);
+  $('focus-exit').textContent = mints.length > 1 ? 'Change coins' : 'Change coin';
+  $('focus-exit').title = 'Back to the address field';
+  refreshFocusName();
+  try {
+    history.replaceState(null, '', hashForCoins(mints));
+  } catch {
+    // file:// or embedded: the coins still play, only the link can't be shared.
+  }
 }
 
 // --------------------------------------------------------------------- status
@@ -250,10 +362,30 @@ function selectedSource(): Source {
   return (el?.value as Source | undefined) ?? 'public';
 }
 
-async function start(): Promise<void> {
+async function start(mode: 'coin' | 'market' = 'coin'): Promise<void> {
   const source = selectedSource();
   const errorEl = $('source-error');
   errorEl.hidden = true;
+  const caError = $('ca-error');
+  caError.hidden = true;
+
+  let target: StreamTarget = { kind: 'market' };
+  if (mode === 'coin') {
+    const list = parseCoinList($<HTMLTextAreaElement>('ca').value);
+    const problem =
+      list.invalid.length ? `Not a contract address: ${list.invalid.join(', ')}`
+      : !list.mints.length ? 'Paste a contract address (CA) or a pump.fun link. Or explore the whole market below.'
+      : null;
+    if (problem) {
+      caError.textContent = problem;
+      caError.hidden = false;
+      $('ca').focus();
+      return;
+    }
+    if (list.dropped) toast(`Up to ${MAX_COINS} coins at once: listening to the first ${MAX_COINS}.`);
+    target = { kind: 'coins', mints: list.mints };
+    settings.lastCoins = list.mints;
+  }
 
   const url = $<HTMLInputElement>('endpoint').value.trim();
   if (source === 'custom') {
@@ -278,7 +410,22 @@ async function start(): Promise<void> {
   }
   engine.setMasterVolume(settings.master);
 
-  stream = source === 'demo' ? new DemoStream(handlers) : new RpcStream(source === 'custom' ? url : DEFAULT_WS_ENDPOINTS, handlers);
+  const endpoints = source === 'custom' ? url : DEFAULT_WS_ENDPOINTS;
+  if (target.kind === 'coins') {
+    const mints = target.mints;
+    engine.setCoins(mints);
+    trackers = new Map(mints.map((m) => [m, new CoinTracker()]));
+    stream = source === 'demo' ? new CoinDemoStream(handlers, mints) : new RpcStream(endpoints, handlers, target);
+    buildCoinRows(mints);
+    showCoinBar(mints);
+    if (source === 'custom') for (const m of mints) void lookUpName(url, m);
+  } else {
+    engine.setCoins([]);
+    trackers = new Map();
+    stream = source === 'demo' ? new DemoStream(handlers) : new RpcStream(endpoints, handlers);
+  }
+  $('coin-stats').hidden = target.kind !== 'coins';
+  $('market-stats').hidden = target.kind === 'coins';
   stream.start();
 
   renderer.start();
@@ -286,8 +433,6 @@ async function start(): Promise<void> {
   $('actions').hidden = false;
   setPanel('stats', window.innerWidth > 720);
   setFeed(window.innerWidth > 720);
-  const shared = coinFromHash(location.hash);
-  if (shared) setFocus(shared, `https://pump.fun/coin/${shared}`);
   statsTimer = setInterval(renderStats, 500);
 }
 
@@ -304,10 +449,25 @@ async function stop(): Promise<void> {
   setPanel('mixer', false);
   setFeed(false);
   $('feed').replaceChildren();
-  engine.setFocus(null);
+  engine.setCoins([]);
+  trackers = new Map();
   $('focusbar').hidden = true;
+  text('focus-label', 'Only');
+  $('focus-exit').textContent = 'Show all';
+  $('focus-exit').title = 'Hear the whole market again (Esc)';
   $('intro').hidden = false;
   showState({ kind: 'idle' }, '');
+}
+
+/** Helius endpoints can tell us the coin's ticker (one getAsset call). */
+async function lookUpName(wsUrl: string, mint: string): Promise<void> {
+  const http = heliusHttpUrl(wsUrl);
+  if (!http) return;
+  const info = await fetchCoinInfo(http, mint);
+  if (info && engine.coinList.includes(mint)) {
+    engine.setSymbol(mint, info.symbol);
+    refreshFocusName();
+  }
 }
 
 // ---------------------------------------------------------------- controls
@@ -404,6 +564,17 @@ function initIntro(): void {
     r.checked = r.value === settings.source;
     r.addEventListener('change', sync);
   }
+  const shared = coinsFromHash(location.hash);
+  const coins = shared.length ? shared : settings.lastCoins;
+  if (coins.length) $<HTMLTextAreaElement>('ca').value = coins.join('\n');
+  text('ca-limit', `up to ${MAX_COINS}`);
+  $('ca').addEventListener('keydown', (e) => {
+    // Enter starts, Shift+Enter adds a line for the next coin.
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      void start('coin');
+    }
+  });
   if (settings.endpoint) {
     $<HTMLInputElement>('endpoint').value = settings.endpoint;
     $<HTMLInputElement>('remember').checked = true;
@@ -429,17 +600,21 @@ $('help-demo').addEventListener('click', () => {
   chooseSource('demo');
   settings.source = 'demo';
   saveSettings(settings);
-  stream = new DemoStream(handlers);
+  stream = engine.coinMode ? new CoinDemoStream(handlers, engine.coinList) : new DemoStream(handlers);
   stream.start();
 });
 
-$('btn-start').addEventListener('click', () => void start());
+$('btn-start').addEventListener('click', () => void start('coin'));
+$('btn-market').addEventListener('click', () => void start('market'));
 $('btn-stop').addEventListener('click', () => void stop());
 $('btn-mute').addEventListener('click', () => setMuted(!muted));
 $('btn-stats').addEventListener('click', () => togglePanel('stats'));
 $('btn-mixer').addEventListener('click', () => togglePanel('mixer'));
 $('btn-feed').addEventListener('click', () => setFeed($('feed').hidden !== false));
-$('focus-exit').addEventListener('click', () => setFocus(null, null));
+$('focus-exit').addEventListener('click', () => {
+  if (engine.coinMode) void stop();
+  else setFocus(null, null);
+});
 
 window.addEventListener('keydown', (e) => {
   if (!engine.running || e.target instanceof HTMLInputElement) return;
@@ -447,7 +622,7 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 's' || e.key === 'S') togglePanel('stats');
   if (e.key === 'x' || e.key === 'X') togglePanel('mixer');
   if (e.key === 'f' || e.key === 'F') setFeed($('feed').hidden !== false);
-  if (e.key === 'Escape' && engine.focused) setFocus(null, null);
+  if (e.key === 'Escape' && engine.focused && !engine.coinMode) setFocus(null, null);
 });
 
 canvas.addEventListener('mousemove', (e) => {

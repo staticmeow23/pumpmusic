@@ -1,12 +1,17 @@
 import { MUSIC, SLOTS_PER_LEADER_WINDOW } from '../config';
-import type { PumpEvent, TradeEvent, Venue } from '../pump/events';
+import type { PumpEvent, Quote, TradeEvent, Venue } from '../pump/events';
 import { hash32, isBase58Address } from '../solana/encoding';
 import type { TxMessage } from '../stream/types';
+import { tradeLabel } from '../ui/labels';
 import { SlotClock } from './clock';
 import {
   MoodMeter,
+  PriceMelody,
   chordIndex,
   chordNotes,
+  coinNote,
+  coinPan,
+  coinRegister,
   midiToHz,
   modeFor,
   rootOf,
@@ -60,6 +65,20 @@ export interface VisualNote {
   sol: number | null;
   /** Outside the focused coin: drawn quietly, not played. */
   faint: boolean;
+  /** Trader's wallet, when the event names it. */
+  user: string | null;
+  /** Coin mode: which of the entered coins (0, 1, ...), for its colour. */
+  coinIndex: number | null;
+}
+
+/** One entered coin in coin mode. */
+interface CoinVoice {
+  index: number;
+  melody: PriceMelody;
+  /** Learned from curve trades; PumpSwap events don't say. */
+  quote: Quote | null;
+  /** Seen trading on its bonding curve (and not graduated since). */
+  onCurve: boolean;
 }
 
 export interface SlotMark {
@@ -81,6 +100,24 @@ export interface EngineStats {
   slotMs: number;
   playingSlot: number | null;
   slotFeed: boolean;
+}
+
+/**
+ * PumpSwap events name the pool, not the mint. While listening to a coin,
+ * every transaction we get mentions its mint, so if such a transaction trades
+ * exactly one PumpSwap pool we don't know yet, that pool is the coin's.
+ * Several pools (a route through other coins) teach us nothing, and neither
+ * does a coin still on its bonding curve: a PumpSwap trade next to it belongs
+ * to some other coin on the route.
+ */
+export function learnCoinPool(events: readonly PumpEvent[], poolToMint: ReadonlyMap<string, string>, onCurve = false): string | null {
+  if (onCurve) return null;
+  const unknown = new Set<string>();
+  for (const ev of events) {
+    if (ev.kind === 'trade' && ev.venue === 'curve') return null;
+    if (ev.kind === 'trade' && ev.venue === 'swap' && ev.token && !poolToMint.has(ev.token)) unknown.add(ev.token);
+  }
+  return unknown.size === 1 ? unknown.values().next().value! : null;
 }
 
 const NOTE_NAMES = ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'];
@@ -129,12 +166,16 @@ export class MusicEngine {
 
   /** Coin (mint or pool) to listen to exclusively; null = the whole market. */
   private focus: string | null = null;
+  /** Coin mode: the entered mints; each has its own melody, register and stereo place. */
+  private coins = new Map<string, CoinVoice>();
 
   private activeVoices = 0;
   private counters = { notes: 0, merged: 0, late: 0, dropped: 0 };
 
   onVisual: (n: VisualNote) => void = () => {};
   onSlotMark: (m: SlotMark) => void = () => {};
+  /** Coin mode: every trade of the coin, for its price and stats. */
+  onCoinTrade: (ev: TradeEvent, mint: string) => void = () => {};
 
   /** Must be called from a user gesture (browser autoplay rules). */
   async start(): Promise<void> {
@@ -235,8 +276,31 @@ export class MusicEngine {
     this.focus = coin;
   }
 
+  /** Coin mode: only these mints play, each price drives its own melody. Empty = market mode. */
+  setCoins(mints: readonly string[]): void {
+    this.coins = new Map(mints.map((m, index) => [m, { index, melody: new PriceMelody(), quote: null, onCurve: false }]));
+    this.focus = null;
+  }
+
+  get coinMode(): boolean {
+    return this.coins.size > 0;
+  }
+
+  get coinList(): string[] {
+    return [...this.coins.keys()];
+  }
+
+  private coinIndexOf(mint: string | null): number | null {
+    return mint ? this.coins.get(mint)?.index ?? null : null;
+  }
+
   get focused(): string | null {
     return this.focus;
+  }
+
+  /** Ticker learned elsewhere (e.g. a metadata lookup), for labels and the coin bar. */
+  setSymbol(mint: string, symbol: string): void {
+    this.symbols.set(mint, symbol);
   }
 
   /** Ticker of a coin seen in this session (mint or a known pool), if any. */
@@ -263,10 +327,16 @@ export class MusicEngine {
       const at = faint ? null : this.place(tx.slot, 'ghosts', base, 1);
       const pan = ((hash32(tx.signature) % 200) / 100 - 1) * 0.8;
       if (at !== null) this.play('ghosts', at, (ctx, dest, t) => V.ghost(ctx, dest, t, pan));
-      this.onVisual({ at: Math.max(base, performance.now()), kind: 'failed', venue: parsed.failedVenue, size: 0, pitch: 0.5, label: null, link: null, whale: false, pan, coin: null, symbol: null, sol: null, faint });
+      this.onVisual({ at: Math.max(base, performance.now()), kind: 'failed', venue: parsed.failedVenue, size: 0, pitch: 0.5, label: null, link: null, whale: false, pan, coin: null, symbol: null, sol: null, faint, user: null, coinIndex: this.coinIndexOf(tx.mentions) });
       return;
     }
 
+    if (this.coins.size) {
+      // The subscription that delivered the tx tells us which coin it is about.
+      const owner = tx.mentions && this.coins.has(tx.mentions) ? tx.mentions : this.coins.size === 1 ? this.coinList[0]! : null;
+      const pool = owner ? learnCoinPool(parsed.events, this.poolToMint, this.coins.get(owner)!.onCurve) : null;
+      if (pool && owner) this.poolToMint.set(pool, owner);
+    }
     for (const ev of parsed.events) this.handleEvent(ev, tx, base);
   }
 
@@ -308,7 +378,7 @@ export class MusicEngine {
           const freqs = [0, 2, 4].map((s) => midiToHz(scaleNote(tx.slot, this.mode, (h % 5) + s, 3)));
           this.play('events', at, (ctx, dest, t) => V.sparkle(ctx, dest, t, freqs, pan));
         }
-        this.onVisual({ at: at ?? base, kind: 'create', venue: 'curve', size: 0.25, pitch: 0.92, label: ev.symbol ? `$${ev.symbol}` : 'new coin', link: this.coinLink(ev.mint, tx), whale: false, pan, coin: ev.mint, symbol: ev.symbol || null, sol: null, faint });
+        this.onVisual({ at: at ?? base, kind: 'create', venue: 'curve', size: 0.25, pitch: 0.92, label: ev.symbol ? `$${ev.symbol}` : 'new coin', link: this.coinLink(ev.mint, tx), whale: false, pan, coin: ev.mint, symbol: ev.symbol || null, sol: null, faint, user: null, coinIndex: this.coinIndexOf(ev.mint) });
         return;
       }
       case 'complete': {
@@ -317,18 +387,20 @@ export class MusicEngine {
         const at = Math.max(base, performance.now() + 30);
         const f = midiToHz(scaleNote(tx.slot, this.mode, 0, 2));
         if (!faint) this.play('events', at, (ctx, dest, t) => V.chime(ctx, dest, t, f));
-        this.onVisual({ at, kind: 'complete', venue: 'curve', size: 0.6, pitch: 0.7, label: this.labelFor(ev.mint, 'curve filled'), link: this.coinLink(ev.mint, tx), whale: false, pan: 0, coin: ev.mint, symbol: this.symbols.get(ev.mint) ?? null, sol: null, faint });
+        this.onVisual({ at, kind: 'complete', venue: 'curve', size: 0.6, pitch: 0.7, label: this.labelFor(ev.mint, 'curve filled'), link: this.coinLink(ev.mint, tx), whale: false, pan: 0, coin: ev.mint, symbol: this.symbols.get(ev.mint) ?? null, sol: null, faint, user: null, coinIndex: this.coinIndexOf(ev.mint) });
         return;
       }
       case 'migrate': {
         this.poolToMint.set(ev.pool, ev.mint);
+        const migrated = this.coins.get(ev.mint);
+        if (migrated) migrated.onCurve = false;
         if (!this.celebrate(`migrate:${ev.mint}`)) return;
         const faint = !this.isFocused(ev.mint, ev.pool);
         const at = Math.max(base, performance.now() + 30);
         const chord = chordNotes(tx.slot, this.mode).map((m) => midiToHz(m + 12));
         const root = midiToHz(scaleNote(tx.slot, this.mode, 0, -1));
         if (!faint) this.play('events', at, (ctx, dest, t) => V.swell(ctx, dest, t, chord, root));
-        this.onVisual({ at, kind: 'migrate', venue: 'swap', size: 1, pitch: 0.5, label: `${this.labelFor(ev.mint, 'coin')} graduated`, link: this.coinLink(ev.mint, tx), whale: true, pan: 0, coin: ev.mint, symbol: this.symbols.get(ev.mint) ?? null, sol: null, faint });
+        this.onVisual({ at, kind: 'migrate', venue: 'swap', size: 1, pitch: 0.5, label: `${this.labelFor(ev.mint, 'coin')} graduated`, link: this.coinLink(ev.mint, tx), whale: true, pan: 0, coin: ev.mint, symbol: this.symbols.get(ev.mint) ?? null, sol: null, faint, user: null, coinIndex: this.coinIndexOf(ev.mint) });
         return;
       }
     }
@@ -336,21 +408,35 @@ export class MusicEngine {
 
   private handleTrade(ev: TradeEvent, tx: TxMessage, base: number): void {
     const now = performance.now();
-    this.recentTrades.push(now);
-    this.mood.add(ev.side, Math.sqrt(ev.impact ?? 0.002), now);
-
     const channel: Channel = ev.venue === 'swap' ? 'swap' : ev.side === 'buy' ? 'buys' : 'sells';
-    const mint = ev.token ? (ev.venue === 'swap' ? this.poolToMint.get(ev.token) ?? null : ev.token) : null;
+    let mint = ev.token ? (ev.venue === 'swap' ? this.poolToMint.get(ev.token) ?? null : ev.token) : null;
+    // Fallback trades (no event, no token) inside a coin's transaction are that coin's.
+    if (!mint && ev.token === null && tx.mentions && this.coins.has(tx.mentions)) mint = tx.mentions;
+    const voice = mint ? this.coins.get(mint) : undefined;
+    if (voice && ev.quote) voice.quote = ev.quote;
+    if (voice && ev.venue === 'curve') voice.onCurve = true;
+    const faint = this.coins.size ? !voice : !this.isFocused(mint, ev.token);
+    if (!faint) {
+      this.recentTrades.push(now);
+      this.mood.add(ev.side, Math.sqrt(ev.impact ?? 0.002), now);
+    }
+
     // The coin keeps one voice before and after graduation once we know its pool.
     const key = mint ?? ev.token ?? `${ev.venue}-${ev.side}`;
     const h = hash32(key);
-    const midi = tradeNote(tx.slot, this.mode, h, ev.impact, ev.side);
+    // Market: big = deep, each coin its own note. Coin mode: each price is a melody
+    // in its coin's register, each coin has its place in the stereo field.
+    const midi = voice
+      ? coinNote(tx.slot, this.mode, voice.melody.step(ev.price, now) + coinRegister(voice.index))
+      : tradeNote(tx.slot, this.mode, h, ev.impact, ev.side);
     const vel = velocityForImpact(ev.impact);
-    const pan = ((h % 200) / 100 - 1) * 0.7;
+    const pan = voice
+      ? coinPan(voice.index, this.coins.size, ev.user ? hash32(ev.user) : h)
+      : ((h % 200) / 100 - 1) * 0.7;
     const whale = ev.impact !== null && ev.impact >= MUSIC.whaleImpact;
-    const faint = !this.isFocused(mint, ev.token);
+    const cap = this.coins.size ? MUSIC.coin.notesPerSlot : MUSIC.notesPerSlotPerVoice;
 
-    const at = faint ? null : this.place(tx.slot, channel, base, MUSIC.notesPerSlotPerVoice);
+    const at = faint ? null : this.place(tx.slot, channel, base, cap);
     if (faint) {
       // Out of focus: drawn quietly, neither played nor counted as merged.
     } else if (at === null) {
@@ -367,7 +453,12 @@ export class MusicEngine {
     }
 
     let label: string | null = null;
-    if (mint && this.symbols.has(mint)) label = `$${this.symbols.get(mint)}`;
+    // Graduated pump coins trade against SOL unless the curve told us otherwise.
+    const quote = voice && ev.venue === 'swap' ? voice.quote ?? 'sol' : ev.quote;
+    if (voice && mint) {
+      // Coin mode: every bubble says which coin and how much.
+      label = tradeLabel(this.symbols.get(mint) ?? `${mint.slice(0, 4)}…`, ev.side, ev.quoteAmount, quote);
+    } else if (mint && this.symbols.has(mint)) label = `$${this.symbols.get(mint)}`;
     else if (ev.lamports !== null && ev.lamports >= 1e9) label = `${(ev.lamports / 1e9).toFixed(ev.lamports >= 1e10 ? 0 : 1)} SOL`;
 
     this.onVisual({
@@ -377,14 +468,18 @@ export class MusicEngine {
       size: ev.impact === null ? 0.2 : Math.min(1, Math.max(0, (Math.log10(Math.max(ev.impact, 1e-5)) + 4) / 3)),
       pitch: Math.max(0, Math.min(1, (midi - 36) / 60)),
       label,
-      link: mint ? this.coinLink(mint, tx) : this.txLink(tx),
+      // One coin: every bubble is its own transaction. Market: the bubble is its coin.
+      link: this.coins.size || !mint ? this.txLink(tx) : this.coinLink(mint, tx),
       whale,
       pan,
       coin: mint ?? ev.token,
       symbol: mint ? this.symbols.get(mint) ?? null : null,
-      sol: ev.lamports !== null && ev.lamports > 0 ? ev.lamports / 1e9 : null,
+      sol: ev.lamports !== null && ev.lamports > 0 ? ev.lamports / 1e9 : voice && quote === 'sol' && ev.quoteAmount ? ev.quoteAmount / 1e9 : null,
       faint,
+      user: ev.user,
+      coinIndex: voice?.index ?? null,
     });
+    if (voice && mint) this.onCoinTrade(ev, mint);
   }
 
   // --------------------------------------------------------------- helpers
@@ -442,6 +537,10 @@ export class MusicEngine {
    * pool still matches once we learn its mint, and the other way round.
    */
   private isFocused(mint: string | null, token: string | null): boolean {
+    if (this.coins.size) {
+      const tMint = token ? this.poolToMint.get(token) ?? token : null;
+      return (mint !== null && this.coins.has(mint)) || (tMint !== null && this.coins.has(tMint));
+    }
     const f = this.focus;
     if (f === null) return true;
     const fMint = this.poolToMint.get(f) ?? f;
@@ -509,8 +608,9 @@ export class MusicEngine {
     }
     this.nextPulseSlot = Math.max(this.nextPulseSlot, horizon + 1);
 
-    // Pad brightness: trades in the last 5 s against a busy reference of 25/s.
+    // Pad brightness: trades heard in the last 5 s against a "busy" reference.
     while (this.recentTrades.length && now - this.recentTrades[0]! > 5_000) this.recentTrades.shift();
-    this.pad?.setActivity(this.recentTrades.length / (25 * 5), ctx.currentTime);
+    const ref = this.coins.size ? MUSIC.coin.activityRef * this.coins.size : MUSIC.marketActivityRef;
+    this.pad?.setActivity(this.recentTrades.length / (ref * 5), ctx.currentTime);
   }
 }

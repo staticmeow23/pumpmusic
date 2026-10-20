@@ -7,6 +7,8 @@ export interface TxMessage {
   /** performance.now() when the message arrived. */
   receivedAt: number;
   parsed: ParsedLogs;
+  /** Coin mode: the mint whose subscription delivered this transaction. */
+  mentions: string | null;
 }
 
 export type StreamState =
@@ -16,6 +18,9 @@ export type StreamState =
   /** `failures`: connections in a row that ended without going live (or dropped). */
   | { kind: 'waiting'; retryInMs: number; reason: string; failures: number }
   | { kind: 'error'; reason: string };
+
+/** What to listen to: the whole pump market (both programs) or a few coins by mint. */
+export type StreamTarget = { kind: 'market' } | { kind: 'coins'; mints: readonly string[] };
 
 export interface StreamHandlers {
   onTx(tx: TxMessage): void;

@@ -19,7 +19,7 @@
       </div>
       <div id="status" class="pill" data-state="idle"><span class="dot"></span><span id="status-text">Not connected</span></div>
       <div id="focusbar" class="focusbar" hidden>
-        <span>Only <b id="focus-name">–</b></span>
+        <span><span id="focus-label">Only</span> <b id="focus-name">–</b></span>
         <a id="focus-link" href="#" target="_blank" rel="noopener noreferrer" hidden>pump.fun ↗</a>
         <button type="button" id="focus-exit" title="Hear the whole market again (Esc)">Show all</button>
       </div>
@@ -34,17 +34,23 @@
 
     <section id="intro" class="overlay">
       <div class="card">
-        <h1>Hear pump.fun, live.</h1>
+        <h1>Hear your pump.fun coins.</h1>
         <p class="lede">
-          Every trade on pump.fun becomes a note, in time with Solana's slots. Big trades sound deep, small ones ring high.
-          Buyers in control make the key brighter, sellers make it darker.
+          Paste one or more contract addresses. Every trade becomes a note, in time with Solana's slots:
+          each coin's melody follows its price, big trades ring louder, buyers brighten the key and sellers darken it.
         </p>
 
+        <label class="ca" for="ca">
+          <span>Contract addresses (CA) <small id="ca-limit"></small></span>
+          <textarea id="ca" rows="2" autocomplete="off" spellcheck="false" placeholder="One per line, or separated by spaces. pump.fun links work too."></textarea>
+        </label>
+        <p id="ca-error" class="error" role="alert" hidden></p>
+
         <ul class="legend">
-          <li><i class="sw buy"></i><b>Buy</b> bell</li>
-          <li><i class="sw sell"></i><b>Sell</b> plucked string</li>
-          <li><i class="sw ring"></i><b>Graduated coin</b> electric piano</li>
-          <li><i class="sw star"></i><b>New coin</b> sparkle</li>
+          <li><i class="sw buy"></i><b>Buy</b> bell, filled bubble</li>
+          <li><i class="sw ring"></i><b>Sell</b> plucked string, ring</li>
+          <li><i class="sw price"></i><b>Price</b> = the melody</li>
+          <li><i class="sw coins"></i><b>Each coin</b> its own colour</li>
           <li><i class="sw gold"></i><b>Graduation</b> string swell</li>
           <li><i class="sw beat"></i><b>Slot clock</b> 4 slots = 1 beat</li>
         </ul>
@@ -61,11 +67,12 @@
           <p id="source-error" class="error" role="alert" hidden></p>
         </fieldset>
 
-        <button type="button" id="btn-start" class="primary">Start listening</button>
+        <button type="button" id="btn-start" class="primary">Listen</button>
+        <button type="button" id="btn-market" class="linkish">Or explore the whole market (very busy, heavy on data)</button>
         <p class="fineprint">
           Sound starts after your click (browser rule). The free public endpoint is rate-limited and not meant for production;
           if it refuses or drops, try again later, use the demo, or paste your own endpoint.
-          Click a bubble to hear only that coin. Not financial advice.
+          Click a bubble to open its transaction. Not financial advice.
         </p>
       </div>
     </section>
@@ -73,6 +80,11 @@
     <ol id="feed" class="feed" aria-label="Recent activity" hidden></ol>
 
     <aside id="stats" class="panel left" hidden aria-label="Statistics">
+      <div id="coin-stats" hidden>
+        <h2>Coins <small>since you joined</small></h2>
+        <div id="coin-rows"></div>
+      </div>
+      <div id="market-stats">
       <h2>Market <small>60 s average</small></h2>
       <dl>
         <dt>Trades</dt><dd><b id="s-trades">–</b>/s</dd>
@@ -82,6 +94,7 @@
         <dt>Graduations</dt><dd><span id="s-grads">0</span> this session</dd>
         <dt>Failed tx</dt><dd><span id="s-failed">–</span>/s</dd>
       </dl>
+      </div>
       <h2>Music</h2>
       <dl>
         <dt>Key</dt><dd id="s-key">–</dd>
@@ -95,7 +108,7 @@
         <dt>Stream</dt><dd><span id="s-rate">–</span>/s<span id="s-rate-note" class="hint"></span></dd>
         <dt>Per day</dt><dd id="s-day">–</dd>
         <dt>On Helius</dt><dd>≈ <span id="s-credits">–</span> credits/mo</dd>
-        <dt>Free plan</dt><dd><span id="s-free">–</span> of 1M</dd>
+        <dt>Free plan</dt><dd>≈ <span id="s-free">–</span> h/mo</dd>
         <dt>Decoder</dt><dd class="mono" id="s-decoder">–</dd>
       </dl>
     </aside>

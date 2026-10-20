@@ -248,6 +248,42 @@ button.quiet { color: var(--muted); }
 .feed .gold .dot { background: var(--gold); }
 @keyframes feed-in { from { opacity: 0; transform: translateY(-4px); } }
 
+.ca { display: grid; gap: 6px; margin: 0 0 14px; }
+.ca span { font-size: 12px; color: var(--muted); }
+.ca small { color: var(--muted); opacity: 0.8; }
+.ca textarea {
+  resize: vertical; min-height: 46px;
+  width: 100%;
+  font: 14px ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text);
+  background: rgba(2, 6, 18, 0.6);
+  border: 1px solid rgba(94, 234, 212, 0.35);
+  border-radius: 12px;
+  padding: 11px 12px;
+}
+#ca-error { margin: -6px 0 12px; }
+.sw.coins { background: conic-gradient(rgb(94,234,212) 0 33%, rgb(252,211,77) 0 66%, rgb(196,181,253) 0); }
+.coin-row { padding: 6px 0 4px; border-top: 1px solid var(--line); }
+.coin-row:first-child { border-top: 0; }
+.coin-row .coin-name { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 4px; }
+.coin-row .coin-name a { color: var(--text); text-decoration: none; }
+.coin-row .coin-name a:hover { text-decoration: underline; }
+.coin-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.change[data-dir="up"] { color: var(--buy); }
+.change[data-dir="down"] { color: var(--sell); }
+.chips { display: inline-flex; flex-wrap: wrap; gap: 4px 10px; }
+.chip { display: inline-flex; align-items: center; gap: 5px; color: var(--text); text-decoration: none; font-weight: 600; }
+.chip:hover { text-decoration: underline; }
+.sw.price { width: 14px; height: 10px; border-radius: 0; background: linear-gradient(135deg, transparent 45%, var(--buy) 45%, var(--buy) 60%, transparent 60%); }
+button.linkish {
+  display: block; width: 100%; margin-top: 8px;
+  background: none; border-color: transparent;
+  color: var(--muted); font-size: 13px;
+}
+button.linkish:hover { color: var(--text); background: rgba(148, 163, 184, 0.08); }
+.meter.progress { width: 70px; background: rgba(148, 163, 184, 0.2); }
+.meter.progress span { left: 0; top: 0; height: 6px; width: 0; border-radius: 3px; transform: none; background: var(--gold); transition: width 0.4s; }
+
 .helpcard {
   position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
   width: min(440px, calc(100vw - 32px));

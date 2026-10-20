@@ -1,4 +1,4 @@
-import { DISCRIMINATORS, SYSTEM_PROGRAM, WSOL_MINT } from '../config';
+import { DISCRIMINATORS, INITIAL_REAL_TOKEN_RESERVES, SYSTEM_PROGRAM, USDC_MINT, WSOL_MINT } from '../config';
 import { BorshReader, EndOfData } from '../solana/borsh';
 
 /**
@@ -20,7 +20,17 @@ export interface TradeEvent {
   /** Lamports, only when the trade is known to be quoted in SOL. */
   lamports: number | null;
   user: string | null;
+  /** Raw quote units per raw token unit (curve: virtual reserves, swap: pool reserves). */
+  price: number | null;
+  /** Quote currency when the event says so; PumpSwap events don't. */
+  quote: Quote | null;
+  /** Bonding curve progress 0..1 from the real token reserves; null on PumpSwap. */
+  progress: number | null;
+  /** Trade size in raw quote units (lamports for SOL); on PumpSwap the quote mint is unknown here. */
+  quoteAmount: number | null;
 }
+
+export type Quote = 'sol' | 'usdc' | 'other';
 
 export interface CreateEvent {
   kind: 'create';
@@ -87,14 +97,15 @@ export function decodeCurveTrade(body: Uint8Array): TradeEvent {
   const user = r.pubkey();
   r.i64(); // timestamp
   const virtualSolReserves = r.u64();
-  r.u64(); // virtual_token_reserves
+  const virtualTokenReserves = r.u64();
 
   let quoteMint: string | null = null;
   let quoteAmount: number | null = null;
   let virtualQuoteReserves: number | null = null;
+  let realTokenReserves: number | null = null;
   try {
     r.u64(); // real_sol_reserves
-    r.u64(); // real_token_reserves
+    realTokenReserves = r.u64();
     r.skip(32 + 8 + 8); // fee_recipient, fee_basis_points, fee
     r.skip(32 + 8 + 8); // creator, creator_fee_basis_points, creator_fee
     r.skip(1 + 8 + 8 + 8 + 8); // track_volume .. last_update_timestamp
@@ -124,7 +135,17 @@ export function decodeCurveTrade(body: Uint8Array): TradeEvent {
     impact = ratio(solAmount, virtualSolReserves);
   }
 
-  return { kind: 'trade', venue: 'curve', side: isBuy ? 'buy' : 'sell', token: mint, impact, lamports, user };
+  const quoteReserves = virtualSolReserves > 0 ? virtualSolReserves : virtualQuoteReserves;
+  const price = quoteReserves !== null ? ratio(quoteReserves, virtualTokenReserves) : null;
+  const quote: Quote | null =
+    solAmount > 0 || virtualSolReserves > 0 || isSolQuote(quoteMint) ? 'sol'
+    : quoteMint === USDC_MINT ? 'usdc'
+    : quoteMint !== null ? 'other'
+    : null;
+  const progress = realTokenReserves === null ? null : Math.min(1, Math.max(0, 1 - realTokenReserves / INITIAL_REAL_TOKEN_RESERVES));
+
+  const size = solAmount > 0 ? solAmount : quoteAmount;
+  return { kind: 'trade', venue: 'curve', side: isBuy ? 'buy' : 'sell', token: mint, impact, lamports, user, price, quote, progress, quoteAmount: size };
 }
 
 export function decodeCreate(body: Uint8Array): CreateEvent {
@@ -169,7 +190,7 @@ export function decodeSwapTrade(body: Uint8Array, side: Side): TradeEvent {
   r.u64(); // max_quote_amount_in | min_quote_amount_out
   r.u64(); // user_base_token_reserves
   r.u64(); // user_quote_token_reserves
-  r.u64(); // pool_base_token_reserves
+  const poolBaseReserves = r.u64();
   const poolQuoteReserves = r.u64();
   const quoteAmount = r.u64(); // quote_amount_in | quote_amount_out
   r.skip(6 * 8); // fees and the two user-side quote amounts
@@ -183,6 +204,10 @@ export function decodeSwapTrade(body: Uint8Array, side: Side): TradeEvent {
     impact: ratio(quoteAmount, poolQuoteReserves),
     lamports: null, // the event does not say which mint the pool is quoted in
     user,
+    price: ratio(poolQuoteReserves, poolBaseReserves),
+    quote: null,
+    progress: null,
+    quoteAmount,
   };
 }
 

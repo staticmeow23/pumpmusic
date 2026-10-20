@@ -6,7 +6,7 @@ import { feedLine } from '../src/ui/feed';
 const MINT = '7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr';
 const note = (over: Partial<VisualNote>): VisualNote => ({
   at: 0, kind: 'buy', venue: 'curve', size: 0.1, pitch: 0.5, label: null, link: null, whale: false, pan: 0,
-  coin: MINT, symbol: 'POPCAT', sol: 0.2, faint: false, ...over,
+  coin: MINT, symbol: 'POPCAT', sol: 0.2, faint: false, user: 'Wa11etAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAXyZ1', coinIndex: null, ...over,
 });
 
 test('small trades stay out of the feed, big ones and whales get in', () => {
@@ -26,4 +26,9 @@ test('coin events always show, unknown tickers fall back to a short address', ()
   assert.equal(feedLine(note({ kind: 'migrate', symbol: null }), false)?.text, '7GCi…W2hr graduated to PumpSwap');
   assert.equal(feedLine(note({ kind: 'complete' }), false)?.tone, 'gold');
   assert.equal(feedLine(note({ kind: 'failed', coin: null }), false), null);
+});
+
+test('in coin mode a trade line names the coin and the wallet', () => {
+  assert.equal(feedLine(note({ sol: 0.05 }), true, true)?.text, 'Buy 0.05 SOL $POPCAT · Wa11…XyZ1');
+  assert.equal(feedLine(note({ kind: 'migrate' }), true, true)?.text, '$POPCAT graduated to PumpSwap');
 });

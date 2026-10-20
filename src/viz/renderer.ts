@@ -1,5 +1,6 @@
 import type { SlotMark, VisualNote } from '../audio/engine';
 import type { Mode } from '../audio/theory';
+import { COIN_COLORS } from '../config';
 
 interface Bubble {
   x: number;
@@ -215,8 +216,12 @@ export class Renderer {
     // Coins outside the focus stay visible as faint context, like silent edits in Listen to Wikipedia.
     const alpha = Math.min(1, (1 - p) * 1.4) * (b === this.hover ? 1 : 0.9) * (n.faint ? 0.22 : 1);
 
-    const color =
-      n.kind === 'buy' ? COLORS.buy : n.kind === 'sell' ? COLORS.sell : n.kind === 'create' ? COLORS.create : n.kind === 'failed' ? COLORS.failed : COLORS.gold;
+    // Coin mode: one colour per coin, buys filled and sells hollow. Market: colour = side.
+    const coinColor = n.coinIndex !== null ? COIN_COLORS[n.coinIndex % COIN_COLORS.length]! : null;
+    const color = coinColor && n.kind !== 'failed'
+      ? coinColor
+      : n.kind === 'buy' ? COLORS.buy : n.kind === 'sell' ? COLORS.sell : n.kind === 'create' ? COLORS.create : n.kind === 'failed' ? COLORS.failed : COLORS.gold;
+    const hollow = coinColor ? n.kind === 'sell' : n.venue === 'swap';
 
     if (n.kind === 'create') {
       // Four-pointed star for a newborn coin.
@@ -240,8 +245,8 @@ export class Renderer {
 
     ctx.beginPath();
     ctx.arc(b.x, y, Math.max(r, 1), 0, Math.PI * 2);
-    if (n.venue === 'swap') {
-      // Graduated coins: rings instead of filled bubbles.
+    if (hollow) {
+      // Market: graduated coins as rings. Coin mode: sells as rings.
       ctx.fillStyle = `rgba(${color}, ${alpha * 0.08})`;
       ctx.fill();
       ctx.strokeStyle = `rgba(${color}, ${alpha * 0.85})`;
@@ -264,7 +269,11 @@ export class Renderer {
       ctx.lineWidth = 1;
       ctx.stroke();
     }
-    if (n.label && r > 22 && !n.faint) this.drawLabel(n.label, b.x, y, Math.max(10, Math.min(20, r * 0.34)), alpha, '255, 255, 255');
+    if (n.label && !n.faint) {
+      if (r > 22) this.drawLabel(n.label, b.x, y, Math.max(10, Math.min(20, r * 0.34)), alpha, '255, 255, 255');
+      // Coin mode labels every trade; small bubbles carry it underneath.
+      else if (coinColor) this.drawLabel(n.label, b.x, y + r + 10, 11, alpha * 0.9, color);
+    }
   }
 
   private drawLabel(text: string, x: number, y: number, size: number, alpha: number, color: string): void {

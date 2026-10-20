@@ -7,7 +7,7 @@ const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 const WORDS = ['frog', 'cat', 'moon', 'pepe', 'dog', 'wif', 'cap', 'goat', 'beer', 'nap', 'bonk', 'ai', 'jelly', 'sock'];
 
 /** Small seeded PRNG (mulberry32) so a demo run is reproducible. */
-function prng(seed: number): () => number {
+export function prng(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) >>> 0;
@@ -103,7 +103,7 @@ export class DemoStream implements Stream {
     };
     // Roughly the size of a real logsNotification, so the cost panel stays meaningful.
     this.handlers.onBytes(3_500 + Math.floor(this.rand() * 3_000), 'logs');
-    this.handlers.onTx({ slot: this.slot, signature: `demo-${++this.sig}`, receivedAt: performance.now(), parsed });
+    this.handlers.onTx({ slot: this.slot, signature: `demo-${++this.sig}`, receivedAt: performance.now(), parsed, mentions: null });
   }
 
   private tick(): void {
@@ -133,6 +133,10 @@ export class DemoStream implements Stream {
           impact,
           lamports: venue === 'curve' ? Math.round(impact * 32e9) : null,
           user: null,
+          price: null,
+          quote: venue === 'curve' ? 'sol' : null,
+          progress: null,
+          quoteAmount: Math.round(impact * 32e9),
         },
       ]);
     }

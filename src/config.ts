@@ -31,6 +31,13 @@ export const DISCRIMINATORS = {
 /** The all-zero pubkey pump.fun uses as quote_mint for SOL-paired coins. */
 export const SYSTEM_PROGRAM = '11111111111111111111111111111111';
 export const WSOL_MINT = 'So11111111111111111111111111111111111111112';
+export const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+
+/** Every pump coin: 1 billion tokens with 6 decimals. */
+export const TOKEN_DECIMALS = 6;
+export const TOKEN_SUPPLY_RAW = 1_000_000_000 * 10 ** TOKEN_DECIMALS;
+/** real_token_reserves of a fresh bonding curve (seen in real CreateEvents, Oct 2026). */
+export const INITIAL_REAL_TOKEN_RESERVES = 793_100_000_000_000;
 
 /**
  * Default endpoints: the free public Solana RPC. Not meant for production.
@@ -75,6 +82,21 @@ export const MUSIC = {
   slotsPerChord: 32,
   /** Mood (buy vs sell pressure) smoothing time constant. */
   moodHalfLifeMs: 15_000,
+  /** Trades per second that count as "busy" for pad and background (measured live, Oct 2026: ~325/s). */
+  marketActivityRef: 150,
+  /** Listening to one coin. */
+  coin: {
+    /** One scale step per 3 % price move. */
+    priceStep: 1.03,
+    /** The melody's home price follows the real price with this half-life. */
+    priceHalfLifeMs: 180_000,
+    /** Pentatonic steps around home: -8 (1.6 octaves down) .. +12 (2.4 octaves up). */
+    minStep: -8,
+    maxStep: 12,
+    /** One coin rarely has more; every trade should be heard. */
+    notesPerSlot: 4,
+    activityRef: 3,
+  },
 } as const;
 
 /** Activity log: which trades get a line, and how many lines stay on screen. */
@@ -82,3 +104,22 @@ export const FEED = {
   minSol: 1,
   maxItems: 8,
 } as const;
+
+/**
+ * How many coins can be heard at once. Each is one logsSubscribe on the same
+ * connection, so data (and Helius credits) grow with every coin. Open question
+ * with the user (Oct 2026): what the right limit is.
+ */
+export const MAX_COINS = 5;
+
+/** One colour per coin, in the order the coins were entered (RGB triplets for canvas). */
+export const COIN_COLORS = [
+  '94, 234, 212', // teal
+  '252, 211, 77', // amber
+  '196, 181, 253', // violet
+  '251, 146, 60', // orange
+  '125, 211, 252', // sky
+  '190, 242, 100', // lime
+  '244, 114, 182', // pink
+  '253, 164, 175', // coral
+] as const;

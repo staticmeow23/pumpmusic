@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { SlotClock } from '../src/audio/clock';
+import { MUSIC } from '../src/config';
 import {
   MoodMeter,
+  PriceMelody,
   SCALES,
   chordNotes,
   modeFor,
@@ -89,4 +91,31 @@ test('clock starts over after a big slot jump instead of bending the tempo', () 
   assert.equal(clock.resets, 1);
   assert.ok(Math.abs(clock.slotMs - 200) < 1);
   assert.ok(Math.abs(clock.timeOf(11_050) - 30_000) < 5);
+});
+
+test('price melody: rising price climbs the scale, falling price descends', () => {
+  const m = new PriceMelody();
+  assert.equal(m.step(1e-7, 0), 0, 'the first trade sets the reference');
+  const up = m.step(1e-7 * 1.03 ** 4, 1_000);
+  assert.ok(up >= 3 && up <= 4, `+4 steps of 3 % -> about 4, got ${up}`);
+  const down = m.step(1e-7 * 0.97 ** 3, 2_000);
+  assert.ok(down < 0, `below the reference -> negative, got ${down}`);
+});
+
+test('price melody: the reference follows the price, so a plateau returns to the middle', () => {
+  const m = new PriceMelody();
+  m.step(1, 0);
+  const jump = m.step(2, 1_000); // doubled
+  assert.equal(jump, MUSIC.coin.maxStep, 'a doubling is clamped to the top of the range');
+  let s: number = jump;
+  for (let t = 2_000; t <= 20 * 60_000; t += 10_000) s = m.step(2, t);
+  assert.equal(s, 0, 'after a long plateau the melody is back home');
+});
+
+test('price melody: missing prices keep the last step', () => {
+  const m = new PriceMelody();
+  m.step(1, 0);
+  const s = m.step(1.1, 1_000);
+  assert.equal(m.step(null, 2_000), s);
+  assert.equal(m.step(0, 3_000), s);
 });

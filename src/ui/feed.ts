@@ -17,9 +17,11 @@ const formatSol = (sol: number) => `${sol.toFixed(sol < 0.1 ? 2 : sol < 10 ? 1 :
  * big trades get in, unless the listener focuses on one coin: then its every
  * trade is listed.
  */
-export function feedLine(n: VisualNote, focusActive: boolean): FeedLine | null {
+export function feedLine(n: VisualNote, focusActive: boolean, coinMode = false): FeedLine | null {
   if (n.faint) return null;
   const name = coinName(n);
+  // Listening to a few coins, a trade line names the coin and the wallet.
+  const wallet = coinMode && n.user ? shortAddress(n.user) : null;
   switch (n.kind) {
     case 'failed':
       return null;
@@ -36,7 +38,8 @@ export function feedLine(n: VisualNote, focusActive: boolean): FeedLine | null {
       const parts = [n.kind === 'buy' ? 'Buy' : 'Sell'];
       if (n.sol !== null) parts.push(formatSol(n.sol));
       parts.push(name);
-      if (n.venue === 'swap') parts.push('on PumpSwap');
+      if (wallet) parts.push(`· ${wallet}`);
+      if (n.venue === 'swap' && !coinMode) parts.push('on PumpSwap');
       return { text: parts.join(' ') + (n.whale ? ' · whale' : ''), tone: n.kind, link: n.link };
     }
   }

@@ -21,6 +21,7 @@ const fixtures = readdirSync(join(root, 'test/fixtures'))
   .filter((f) => f.endsWith('.json') && f !== 'expected.json')
   .map((f) => JSON.parse(readFileSync(join(root, 'test/fixtures', f), 'utf8')));
 const SWAP = 'pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA';
+const CURVE = '6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P';
 const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 let slot = 455_000_000; // shared by all connections, like the real chain
 const fakeSig = () => Array.from(randomBytes(88), (b) => B58[b % 58]).join('');
@@ -70,7 +71,8 @@ server.on('upgrade', (req, socket) => {
     const n = Math.random() < 0.5 ? 1 : Math.random() < 0.5 ? 2 : 3;
     for (let i = 0; i < n; i++) {
       const fx = fixtures[Math.floor(Math.random() * fixtures.length)];
-      const mentions = fx.logs.some((l) => l.startsWith(`Program ${SWAP} invoke`)) ? 'swap' : 'curve';
+      // A coin subscription (mentions a mint) gets every fixture; the app ignores other coins.
+      const mentions = subs.has('coin') ? 'coin' : fx.logs.some((l) => l.startsWith(`Program ${SWAP} invoke`)) ? 'swap' : 'curve';
       if (!subs.has(mentions)) continue;
       send({ jsonrpc: '2.0', method: 'logsNotification', params: { subscription: subs.get(mentions), result: { context: { slot }, value: { signature: fakeSig(), err: fx.err, logs: fx.logs } } } });
     }
@@ -86,7 +88,8 @@ server.on('upgrade', (req, socket) => {
       try { msg = JSON.parse(data.toString()); } catch { continue; }
       if (msg.method === 'logsSubscribe') {
         if (refuseLogs) { send({ jsonrpc: '2.0', id: msg.id, error: { code: -32601, message: 'Method not found' } }); continue; }
-        const kind = msg.params?.[0]?.mentions?.[0] === SWAP ? 'swap' : 'curve';
+        const m = msg.params?.[0]?.mentions?.[0];
+        const kind = m === SWAP ? 'swap' : m === CURVE ? 'curve' : 'coin';
         subs.set(kind, nextSub);
         send({ jsonrpc: '2.0', id: msg.id, result: nextSub++ });
       } else if (msg.method === 'slotSubscribe') {

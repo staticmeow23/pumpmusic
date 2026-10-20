@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mock, test } from 'node:test';
 import { DEFAULT_WS_ENDPOINTS } from '../src/config';
 import { RpcStream } from '../src/stream/rpc-stream';
-import type { StreamHandlers, StreamState } from '../src/stream/types';
+import type { StreamHandlers, StreamState, StreamTarget, TxMessage } from '../src/stream/types';
 
 /** Minimal stand-in for the browser WebSocket: records every socket the stream opens. */
 class FakeSocket {
@@ -40,12 +40,13 @@ class FakeSocket {
   }
 }
 
-function setup(urls: string[]) {
+function setup(urls: string[], target?: StreamTarget) {
   FakeSocket.opened = [];
   (globalThis as { WebSocket?: unknown }).WebSocket = FakeSocket;
   const states: StreamState[] = [];
-  const handlers: StreamHandlers = { onTx() {}, onSlot() {}, onBytes() {}, onState: (s) => states.push(s) };
-  return { stream: new RpcStream(urls, handlers), states };
+  const txs: TxMessage[] = [];
+  const handlers: StreamHandlers = { onTx: (t) => txs.push(t), onSlot() {}, onBytes() {}, onState: (s) => states.push(s) };
+  return { stream: new RpcStream(urls, handlers, target), states, txs };
 }
 
 test('the default public endpoint uses the current hostname first', () => {
@@ -112,5 +113,35 @@ test('failures count up until a connection goes live, then reset', () => {
     stream.stop();
   } finally {
     mock.timers.reset();
+  }
+});
+
+test('coin mode: one logs subscription per coin, live once all are confirmed, tx tagged with its coin', () => {
+  const a = '7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr';
+  const b = 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263';
+  const { stream, states, txs } = setup(['wss://a.example'], { kind: 'coins', mints: [a, b] });
+  stream.start();
+  try {
+    const s = FakeSocket.opened[0]!;
+    s.open();
+    const sent = s.sent.map((x) => JSON.parse(x) as { id: number; method: string; params: unknown[] });
+    const logs = sent.filter((m) => m.method === 'logsSubscribe');
+    assert.deepEqual(logs.map((m) => m.params[0]), [{ mentions: [a] }, { mentions: [b] }]);
+    assert.equal(sent.filter((m) => m.method === 'slotSubscribe').length, 1);
+
+    // Only the first coin confirmed: not live yet.
+    s.onmessage?.({ data: JSON.stringify({ jsonrpc: '2.0', id: logs[0]!.id, result: 501 }) });
+    assert.notEqual(states.at(-1)?.kind, 'live');
+    s.confirmAll();
+    assert.equal(states.at(-1)?.kind, 'live');
+
+    const subB = 100 + logs[1]!.id;
+    const note = (sub: number, sig: string) => ({ data: JSON.stringify({ jsonrpc: '2.0', method: 'logsNotification', params: { subscription: sub, result: { context: { slot: 5 }, value: { signature: sig, err: null, logs: [] } } } }) });
+    s.onmessage?.(note(subB, 'sig1'));
+    s.onmessage?.(note(501, 'sig1')); // the same tx through the other coin's subscription
+    assert.equal(txs.length, 1, 'a tx touching two of our coins counts once');
+    assert.equal(txs[0]!.mentions, b);
+  } finally {
+    stream.stop();
   }
 });

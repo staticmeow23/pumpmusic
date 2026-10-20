@@ -8,6 +8,10 @@
 **Nutzer:** spricht Deutsch (Antworten auf Deutsch, Code/Kommentare auf Englisch). Möchte, dass Claude selbst entscheidet, wie viel Aufwand eine Frage braucht. Arbeitet parallel an „Rug Guard“ (Telegram-Bot, gleicher Stack: TypeScript, Helius) – Decoder und Insider-Wissen könnten später geteilt werden.
 
 **Entscheidungen**
+- **Kurswechsel (Okt. 2026, nach Live-Test 2):** Hauptmodus ist jetzt „CA(s) eingeben → diese Coins hören“ (bis `MAX_COINS` = 5, endgültige Zahl offen). Grund: Der ganze Markt liefert ~2,3 MB/s (unbezahlbar, Musik nur Rauschen); ein Coin braucht grob 1–60 KB/s. Der Marktmodus bleibt als „Explore the whole market“.
+- Coin-Modus: ein `logsSubscribe` mit `mentions: [mint]` pro Coin auf derselben Verbindung + `slotSubscribe`. Melodie = Kurs (1 Pentatonik-Schritt pro 3 % gegenüber einem mitwandernden Bezugspreis, Halbwertszeit 3 min), jeder Coin eigene Farbe (`COIN_COLORS`, Reihenfolge der Eingabe), eigene Tonlage, eigene Stereo-/Bildspalte. Kauf = gefüllte Blase + Glocke, Verkauf = Ring + Zupfen. Blasen zeigen „$TICKER ±Betrag“, Klick öffnet die Transaktion auf Solscan.
+- PumpSwap-Events nennen nur den Pool: Pool→Coin wird gelernt, wenn eine Tx des Coins genau einen unbekannten Pool handelt und der Coin nicht (mehr) auf der Curve ist.
+- Ticker eines bestehenden Coins: nur mit Helius-Endpunkt per DAS `getAsset` (ein Aufruf pro Coin), sonst kurze CA.
 - Erst nur pump.fun (Bonding Curve `6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P` + PumpSwap `pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA`).
 - **Vorerst 0 € Kosten:** reine statische Seite, Browser verbindet sich direkt mit dem öffentlichen RPC `wss://api.mainnet.solana.com` (Fallback: alter Name `api.mainnet-beta.solana.com`) (`logsSubscribe` je Programm + `slotSubscribe`). Später Helius kaufen und upgraden.
 - Keine Laufzeit-Abhängigkeiten (eigener Borsh-Decoder, reines Web Audio, Canvas). Dev-Tools: TypeScript, esbuild, tsx (node:test). Build erzeugt **eine** selbstständige `dist/index.html`.
@@ -33,6 +37,8 @@
 - Fokus-Modus (Blase anklicken → nur dieser Coin, `#coin=<mint>` teilbar), Feed (Ereignis-Log), Hilfekarte bei wiederholter RPC-Ablehnung (Okt. 2026).
 - **Live-Test 1 (Nutzer, Okt. 2026):** `api.mainnet.solana.com` und `mainnet-beta` schließen die Verbindung von github.io sofort (1006). Vermutlich Website-/Origin-Sperre (Solana-Doku: 403 = IP oder Website gesperrt). Nächster Versuch: eigener Helius-Key (Free-Plan reicht für ~100+ h/Monat).
 - **Live-Test 2 (Nutzer, Okt. 2026):** Mit eigenem Helius-Key („My own endpoint“) funktioniert der Live-Stream. **Gemessen (60-s-Mittel):** 325 Trades/s (Curve 38,5 Buys + 35 Sells, PumpSwap 252/s), 605 fehlgeschlagene Tx/s, 46 neue Coins/min, Stream **2,3 MB/s** (≈ 200 GB/Tag, ≈ 120 Mio. Helius-Credits/Monat bei Dauerbetrieb), Slotzeit 225 ms, Late 0 %, Decoder fallback 142 / foreign 100.299 / bad 0, Notes 5,7K vs. merged 58,3K. → Die Annahme 12–15 Tx/s war ~20× zu niedrig; der Helius-Free-Plan (50 GB) reicht nur für ~6 h Zuhören im Monat. Hauptlast: PumpSwap-Bot-/Arbitrage-Trades und fehlgeschlagene Bot-Tx.
+
+- **Coin-Modus (Okt. 2026):** CA-Eingabe (auch mehrere, auch pump.fun-/Solscan-Links), teilbarer Link `#coins=A,B`, Kursmelodie, Stats pro Coin (Market Cap, Änderung seit Start, Curve-Fortschritt, Buys/Sells pro Minute), Demo mit simulierten Curves (x·y=k) inkl. Graduation. Getestet: Unit-Tests, Headless (Demo 3 Coins, Fake-RPC mit echtem Fixture-Coin: 33,8 SOL / 12,2 % korrekt, Marktmodus, Mobile). **Noch nicht live getestet.**
 
 **Ideen aus ähnlichen Projekten (Backlog, Okt. 2026 recherchiert)**
 - Listen to Wikipedia (hatnote): Position per Seed aus dem Titel (gleicher Coin = gleiche Stelle); Zähler „You have listened to N trades“; Einstellungen per URL-Hash; Rate gewichtet über 6×10-s-Buckets; harte Obergrenze gleichzeitiger Noten (haben wir).
