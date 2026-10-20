@@ -32,8 +32,12 @@ export const DISCRIMINATORS = {
 export const SYSTEM_PROGRAM = '11111111111111111111111111111111';
 export const WSOL_MINT = 'So11111111111111111111111111111111111111112';
 
-/** Default endpoint: the free public Solana RPC. Not meant for production. */
-export const DEFAULT_WS_ENDPOINT = 'wss://api.mainnet-beta.solana.com';
+/**
+ * Default endpoints: the free public Solana RPC. Not meant for production.
+ * solana.com/docs/references/clusters names api.mainnet.solana.com (checked
+ * Oct 2026); the old mainnet-beta hostname stays as a fallback.
+ */
+export const DEFAULT_WS_ENDPOINTS = ['wss://api.mainnet.solana.com', 'wss://api.mainnet-beta.solana.com'] as const;
 
 /** Mainnet has no warmup epochs, so epoch = floor(slot / SLOTS_PER_EPOCH). */
 export const SLOTS_PER_EPOCH = 432_000;

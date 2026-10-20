@@ -66,11 +66,21 @@ export class RpcStream implements Stream {
   private watchdog: ReturnType<typeof setInterval> | null = null;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private stopped = true;
+  private readonly urls: readonly string[];
+  /** Which of `urls` is in use; moves on when an endpoint never goes live. */
+  private urlIndex = 0;
+  private wentLive = false;
 
   constructor(
-    private readonly url: string,
+    urls: string | readonly string[],
     private readonly handlers: StreamHandlers,
-  ) {}
+  ) {
+    this.urls = typeof urls === 'string' ? [urls] : urls;
+  }
+
+  private get url(): string {
+    return this.urls[this.urlIndex % this.urls.length] ?? '';
+  }
 
   get label(): string {
     return maskEndpoint(this.url);
@@ -80,6 +90,7 @@ export class RpcStream implements Stream {
     if (!this.stopped) return;
     this.stopped = false;
     this.attempt = 0;
+    this.urlIndex = 0;
     this.connect();
   }
 
@@ -101,6 +112,7 @@ export class RpcStream implements Stream {
     this.attempt++;
     this.subs.clear();
     this.gotData = false;
+    this.wentLive = false;
     this.handlers.onState({ kind: 'connecting', attempt: this.attempt });
 
     let socket: WebSocket;
@@ -146,16 +158,20 @@ export class RpcStream implements Stream {
 
   private scheduleReconnect(reason: string): void {
     if (this.stopped) return;
+    const failedAt = new URL(this.url).host;
     const gen = ++this.generation; // invalidates the current socket's callbacks
     const old = this.socket;
     this.socket = null;
     if (old && old.readyState <= WebSocket.OPEN) old.close();
     if (this.watchdog) clearInterval(this.watchdog);
     this.watchdog = null;
+    // An endpoint that never confirmed both subscriptions may be gone or
+    // refusing us: try the next one. One that was live just dropped: retry it.
+    if (!this.wentLive && this.urls.length > 1) this.urlIndex++;
 
     const base = Math.min(STREAM.backoffMaxMs, STREAM.backoffMinMs * 2 ** Math.min(this.attempt - 1, 5));
     const delay = Math.round(base * (0.75 + Math.random() * 0.5));
-    this.handlers.onState({ kind: 'waiting', retryInMs: delay, reason });
+    this.handlers.onState({ kind: 'waiting', retryInMs: delay, reason: `${failedAt}: ${reason}` });
     if (this.retryTimer) clearTimeout(this.retryTimer);
     this.retryTimer = setTimeout(() => {
       if (gen === this.generation && !this.stopped) this.connect();
@@ -186,6 +202,7 @@ export class RpcStream implements Stream {
       if (typeof msg.result === 'number') this.subs.set(msg.result, req.kind);
       const kinds = new Set(this.subs.values());
       if (req.kind !== 'slot' && kinds.has('curve') && kinds.has('swap')) {
+        this.wentLive = true;
         this.handlers.onState({ kind: 'live', since: Date.now() });
       }
       return;

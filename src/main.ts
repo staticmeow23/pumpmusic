@@ -1,5 +1,5 @@
 import { CHANNELS, DEFAULT_GAINS, MusicEngine, type Channel } from './audio/engine';
-import { DEFAULT_WS_ENDPOINT, MUSIC } from './config';
+import { DEFAULT_WS_ENDPOINTS, MUSIC } from './config';
 import { DemoStream } from './stream/demo-stream';
 import { RpcStream, isValidWsUrl, maskEndpoint } from './stream/rpc-stream';
 import type { Stream, StreamState, TxMessage } from './stream/types';
@@ -178,9 +178,8 @@ async function start(): Promise<void> {
   const errorEl = $('source-error');
   errorEl.hidden = true;
 
-  let url = DEFAULT_WS_ENDPOINT;
+  const url = $<HTMLInputElement>('endpoint').value.trim();
   if (source === 'custom') {
-    url = $<HTMLInputElement>('endpoint').value.trim();
     if (!isValidWsUrl(url)) {
       errorEl.textContent = 'Enter a WebSocket URL starting with wss://';
       errorEl.hidden = false;
@@ -208,7 +207,7 @@ async function start(): Promise<void> {
     onState: (s: StreamState) => showState(s, stream?.label ?? ''),
     onBytes: (n: number) => rates.bytes.add(n, performance.now()),
   };
-  stream = source === 'demo' ? new DemoStream(handlers) : new RpcStream(url, handlers);
+  stream = source === 'demo' ? new DemoStream(handlers) : new RpcStream(source === 'custom' ? url : DEFAULT_WS_ENDPOINTS, handlers);
   stream.start();
 
   renderer.start();
