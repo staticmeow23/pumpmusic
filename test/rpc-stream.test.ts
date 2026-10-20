@@ -91,3 +91,26 @@ test('a single custom endpoint keeps retrying itself', () => {
     mock.timers.reset();
   }
 });
+
+test('failures count up until a connection goes live, then reset', () => {
+  mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  try {
+    const { stream, states } = setup(['wss://a.example', 'wss://b.example']);
+    const lastWaiting = () => states.filter((s) => s.kind === 'waiting').at(-1) as Extract<StreamState, { kind: 'waiting' }>;
+    stream.start();
+    for (let i = 0; i < 4; i++) {
+      FakeSocket.opened.at(-1)!.fail();
+      mock.timers.tick(60_000);
+    }
+    assert.equal(lastWaiting().failures, 4);
+
+    const s = FakeSocket.opened.at(-1)!;
+    s.open();
+    s.confirmAll();
+    s.fail();
+    assert.equal(lastWaiting().failures, 1, 'a drop after being live starts counting again');
+    stream.stop();
+  } finally {
+    mock.timers.reset();
+  }
+});

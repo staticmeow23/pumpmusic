@@ -18,7 +18,13 @@
         <span class="sub">pump.fun</span>
       </div>
       <div id="status" class="pill" data-state="idle"><span class="dot"></span><span id="status-text">Not connected</span></div>
+      <div id="focusbar" class="focusbar" hidden>
+        <span>Only <b id="focus-name">–</b></span>
+        <a id="focus-link" href="#" target="_blank" rel="noopener noreferrer" hidden>pump.fun ↗</a>
+        <button type="button" id="focus-exit" title="Hear the whole market again (Esc)">Show all</button>
+      </div>
       <nav class="actions" id="actions" hidden>
+        <button type="button" id="btn-feed" aria-pressed="false" title="Feed (F)">Feed</button>
         <button type="button" id="btn-stats" aria-pressed="true" title="Stats (S)">Stats</button>
         <button type="button" id="btn-mixer" aria-pressed="false" title="Mixer (X)">Mixer</button>
         <button type="button" id="btn-mute" aria-pressed="false" title="Mute (M)">Mute</button>
@@ -46,7 +52,7 @@
         <fieldset class="source">
           <legend>Data source</legend>
           <label><input type="radio" name="source" value="public" checked /> Public Solana RPC <span class="tag">free</span></label>
-          <label><input type="radio" name="source" value="custom" /> My own endpoint <span class="tag">Helius, QuickNode, …</span></label>
+          <label><input type="radio" name="source" value="custom" /> My own endpoint <span class="tag">Helius free plan, QuickNode, …</span></label>
           <label><input type="radio" name="source" value="demo" /> Demo <span class="tag">simulated, offline</span></label>
           <div id="custom-box" class="custom" hidden>
             <input id="endpoint" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="wss://mainnet.helius-rpc.com/?api-key=…" />
@@ -59,10 +65,12 @@
         <p class="fineprint">
           Sound starts after your click (browser rule). The free public endpoint is rate-limited and not meant for production;
           if it refuses or drops, try again later, use the demo, or paste your own endpoint.
-          Click a bubble to open the coin. Not financial advice.
+          Click a bubble to hear only that coin. Not financial advice.
         </p>
       </div>
     </section>
+
+    <ol id="feed" class="feed" aria-label="Recent activity" hidden></ol>
 
     <aside id="stats" class="panel left" hidden aria-label="Statistics">
       <h2>Market <small>60 s average</small></h2>
@@ -103,6 +111,17 @@
       </label>
       <p class="hint block">More buffer = fewer late notes, more delay behind the chain.</p>
     </aside>
+
+    <div id="rpc-help" class="helpcard" role="alert" hidden>
+      <p><b>The free public Solana RPC keeps closing the connection.</b>
+        Public endpoints can block requests from websites, and browsers don't say why.</p>
+      <p>Paste your own endpoint instead. A free Helius key covers more than 100 hours of listening a month.
+        Or play the demo.</p>
+      <div class="helpactions">
+        <button type="button" id="help-custom" class="accent">Use my own endpoint</button>
+        <button type="button" id="help-demo">Play demo</button>
+      </div>
+    </div>
 
     <div id="toast" class="toast" role="status" hidden></div>
     <!--SCRIPT-->

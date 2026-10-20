@@ -53,6 +53,13 @@ export interface VisualNote {
   whale: boolean;
   /** -1..1, matches the stereo position. */
   pan: number;
+  /** Mint, or the pool address while a graduated coin's mint is unknown. */
+  coin: string | null;
+  symbol: string | null;
+  /** Trade size in SOL; null when not SOL-quoted or unknown (PumpSwap). */
+  sol: number | null;
+  /** Outside the focused coin: drawn quietly, not played. */
+  faint: boolean;
 }
 
 export interface SlotMark {
@@ -119,6 +126,9 @@ export class MusicEngine {
   private symbols = new Map<string, string>();
   private poolToMint = new Map<string, string>();
   private celebrated = new Set<string>();
+
+  /** Coin (mint or pool) to listen to exclusively; null = the whole market. */
+  private focus: string | null = null;
 
   private activeVoices = 0;
   private counters = { notes: 0, merged: 0, late: 0, dropped: 0 };
@@ -220,6 +230,20 @@ export class MusicEngine {
     };
   }
 
+  /** Listen to one coin only (mint or pool address), or to everything with null. */
+  setFocus(coin: string | null): void {
+    this.focus = coin;
+  }
+
+  get focused(): string | null {
+    return this.focus;
+  }
+
+  /** Ticker of a coin seen in this session (mint or a known pool), if any. */
+  symbolOf(coin: string): string | null {
+    return this.symbols.get(this.poolToMint.get(coin) ?? coin) ?? null;
+  }
+
   // ---------------------------------------------------------------- input
 
   handleSlot(slot: number, at: number): void {
@@ -235,10 +259,11 @@ export class MusicEngine {
     const { parsed } = tx;
 
     if (parsed.failed && parsed.failedVenue) {
-      const at = this.place(tx.slot, 'ghosts', base, 1);
+      const faint = this.focus !== null;
+      const at = faint ? null : this.place(tx.slot, 'ghosts', base, 1);
       const pan = ((hash32(tx.signature) % 200) / 100 - 1) * 0.8;
       if (at !== null) this.play('ghosts', at, (ctx, dest, t) => V.ghost(ctx, dest, t, pan));
-      this.onVisual({ at: Math.max(base, performance.now()), kind: 'failed', venue: parsed.failedVenue, size: 0, pitch: 0.5, label: null, link: null, whale: false, pan });
+      this.onVisual({ at: Math.max(base, performance.now()), kind: 'failed', venue: parsed.failedVenue, size: 0, pitch: 0.5, label: null, link: null, whale: false, pan, coin: null, symbol: null, sol: null, faint });
       return;
     }
 
@@ -275,32 +300,35 @@ export class MusicEngine {
       case 'create': {
         this.symbols.set(ev.mint, ev.symbol);
         if (this.symbols.size > 5_000) this.symbols.delete(this.symbols.keys().next().value!);
-        const at = this.place(tx.slot, 'events', base, 2);
+        const faint = !this.isFocused(ev.mint, ev.mint);
+        const at = faint ? null : this.place(tx.slot, 'events', base, 2);
         const h = hash32(ev.mint);
         const pan = ((h % 200) / 100 - 1) * 0.7;
         if (at !== null) {
           const freqs = [0, 2, 4].map((s) => midiToHz(scaleNote(tx.slot, this.mode, (h % 5) + s, 3)));
           this.play('events', at, (ctx, dest, t) => V.sparkle(ctx, dest, t, freqs, pan));
         }
-        this.onVisual({ at: at ?? base, kind: 'create', venue: 'curve', size: 0.25, pitch: 0.92, label: ev.symbol ? `$${ev.symbol}` : 'new coin', link: this.coinLink(ev.mint, tx), whale: false, pan });
+        this.onVisual({ at: at ?? base, kind: 'create', venue: 'curve', size: 0.25, pitch: 0.92, label: ev.symbol ? `$${ev.symbol}` : 'new coin', link: this.coinLink(ev.mint, tx), whale: false, pan, coin: ev.mint, symbol: ev.symbol || null, sol: null, faint });
         return;
       }
       case 'complete': {
         if (!this.celebrate(`complete:${ev.mint}`)) return;
+        const faint = !this.isFocused(ev.mint, ev.mint);
         const at = Math.max(base, performance.now() + 30);
         const f = midiToHz(scaleNote(tx.slot, this.mode, 0, 2));
-        this.play('events', at, (ctx, dest, t) => V.chime(ctx, dest, t, f));
-        this.onVisual({ at, kind: 'complete', venue: 'curve', size: 0.6, pitch: 0.7, label: this.labelFor(ev.mint, 'curve filled'), link: this.coinLink(ev.mint, tx), whale: false, pan: 0 });
+        if (!faint) this.play('events', at, (ctx, dest, t) => V.chime(ctx, dest, t, f));
+        this.onVisual({ at, kind: 'complete', venue: 'curve', size: 0.6, pitch: 0.7, label: this.labelFor(ev.mint, 'curve filled'), link: this.coinLink(ev.mint, tx), whale: false, pan: 0, coin: ev.mint, symbol: this.symbols.get(ev.mint) ?? null, sol: null, faint });
         return;
       }
       case 'migrate': {
         this.poolToMint.set(ev.pool, ev.mint);
         if (!this.celebrate(`migrate:${ev.mint}`)) return;
+        const faint = !this.isFocused(ev.mint, ev.pool);
         const at = Math.max(base, performance.now() + 30);
         const chord = chordNotes(tx.slot, this.mode).map((m) => midiToHz(m + 12));
         const root = midiToHz(scaleNote(tx.slot, this.mode, 0, -1));
-        this.play('events', at, (ctx, dest, t) => V.swell(ctx, dest, t, chord, root));
-        this.onVisual({ at, kind: 'migrate', venue: 'swap', size: 1, pitch: 0.5, label: `${this.labelFor(ev.mint, 'coin')} graduated`, link: this.coinLink(ev.mint, tx), whale: true, pan: 0 });
+        if (!faint) this.play('events', at, (ctx, dest, t) => V.swell(ctx, dest, t, chord, root));
+        this.onVisual({ at, kind: 'migrate', venue: 'swap', size: 1, pitch: 0.5, label: `${this.labelFor(ev.mint, 'coin')} graduated`, link: this.coinLink(ev.mint, tx), whale: true, pan: 0, coin: ev.mint, symbol: this.symbols.get(ev.mint) ?? null, sol: null, faint });
         return;
       }
     }
@@ -320,9 +348,12 @@ export class MusicEngine {
     const vel = velocityForImpact(ev.impact);
     const pan = ((h % 200) / 100 - 1) * 0.7;
     const whale = ev.impact !== null && ev.impact >= MUSIC.whaleImpact;
+    const faint = !this.isFocused(mint, ev.token);
 
-    const at = this.place(tx.slot, channel, base, MUSIC.notesPerSlotPerVoice);
-    if (at === null) {
+    const at = faint ? null : this.place(tx.slot, channel, base, MUSIC.notesPerSlotPerVoice);
+    if (faint) {
+      // Out of focus: drawn quietly, neither played nor counted as merged.
+    } else if (at === null) {
       this.counters.merged++;
     } else {
       const freq = midiToHz(midi);
@@ -349,6 +380,10 @@ export class MusicEngine {
       link: mint ? this.coinLink(mint, tx) : this.txLink(tx),
       whale,
       pan,
+      coin: mint ?? ev.token,
+      symbol: mint ? this.symbols.get(mint) ?? null : null,
+      sol: ev.lamports !== null && ev.lamports > 0 ? ev.lamports / 1e9 : null,
+      faint,
     });
   }
 
@@ -400,6 +435,18 @@ export class MusicEngine {
     } catch {
       this.counters.dropped++;
     }
+  }
+
+  /**
+   * Whether an event of this coin passes the focus filter. A focus set on a
+   * pool still matches once we learn its mint, and the other way round.
+   */
+  private isFocused(mint: string | null, token: string | null): boolean {
+    const f = this.focus;
+    if (f === null) return true;
+    const fMint = this.poolToMint.get(f) ?? f;
+    const tMint = token ? this.poolToMint.get(token) ?? token : null;
+    return fMint === mint || fMint === tMint || f === token;
   }
 
   private celebrate(key: string): boolean {

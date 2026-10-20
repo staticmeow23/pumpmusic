@@ -70,6 +70,7 @@ export class RpcStream implements Stream {
   /** Which of `urls` is in use; moves on when an endpoint never goes live. */
   private urlIndex = 0;
   private wentLive = false;
+  private failures = 0;
 
   constructor(
     urls: string | readonly string[],
@@ -91,6 +92,7 @@ export class RpcStream implements Stream {
     this.stopped = false;
     this.attempt = 0;
     this.urlIndex = 0;
+    this.failures = 0;
     this.connect();
   }
 
@@ -168,10 +170,11 @@ export class RpcStream implements Stream {
     // An endpoint that never confirmed both subscriptions may be gone or
     // refusing us: try the next one. One that was live just dropped: retry it.
     if (!this.wentLive && this.urls.length > 1) this.urlIndex++;
+    this.failures = this.wentLive ? 1 : this.failures + 1;
 
     const base = Math.min(STREAM.backoffMaxMs, STREAM.backoffMinMs * 2 ** Math.min(this.attempt - 1, 5));
     const delay = Math.round(base * (0.75 + Math.random() * 0.5));
-    this.handlers.onState({ kind: 'waiting', retryInMs: delay, reason: `${failedAt}: ${reason}` });
+    this.handlers.onState({ kind: 'waiting', retryInMs: delay, reason: `${failedAt}: ${reason}`, failures: this.failures });
     if (this.retryTimer) clearTimeout(this.retryTimer);
     this.retryTimer = setTimeout(() => {
       if (gen === this.generation && !this.stopped) this.connect();

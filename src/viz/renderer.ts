@@ -102,18 +102,18 @@ export class Renderer {
     this.draw(performance.now());
   }
 
-  /** Link of the bubble under the pointer, if any. */
-  hitTest(x: number, y: number): string | null {
+  /** The clickable bubble under the pointer, if any (also sets the hover ring). */
+  hitTest(x: number, y: number): VisualNote | null {
     const b = this.bubbleAt(x, y);
     this.hover = b;
-    return b?.note.link ?? null;
+    return b?.note ?? null;
   }
 
   private bubbleAt(x: number, y: number): Bubble | null {
     for (let i = this.bubbles.length - 1; i >= 0; i--) {
       const b = this.bubbles[i]!;
       const r = Math.max(b.r, 10);
-      if ((x - b.x) ** 2 + (y - b.y) ** 2 <= r * r && b.note.link) return b;
+      if ((x - b.x) ** 2 + (y - b.y) ** 2 <= r * r && (b.note.link || b.note.coin)) return b;
     }
     return null;
   }
@@ -129,14 +129,15 @@ export class Renderer {
     const y = Math.max(margin, Math.min(h - 120, 60 + ((1 - n.pitch) * 0.45 + Math.random() * 0.55) * yBand));
 
     if (n.kind === 'migrate') {
+      if (n.faint) return;
       this.waves.push({ x: w / 2, y: h / 2, born: now, life: 5_000, maxR: Math.hypot(w, h) * 0.6, color: COLORS.gold, width: 3 });
       this.headline = { text: n.label ?? 'graduated', born: now };
       return;
     }
-    if (n.kind === 'complete') {
+    if (n.kind === 'complete' && !n.faint) {
       this.waves.push({ x, y, born: now, life: 2_500, maxR: 220 * scale + 80, color: COLORS.gold, width: 2 });
     }
-    if (n.whale) {
+    if (n.whale && !n.faint) {
       this.waves.push({ x, y, born: now, life: 2_200, maxR: 260 * scale + 60, color: n.kind === 'sell' ? COLORS.sell : COLORS.buy, width: 1.5 });
     }
 
@@ -211,7 +212,8 @@ export class Renderer {
     const pop = age < 260 ? 0.3 + 0.75 * Math.sin((age / 260) * (Math.PI * 0.6)) / Math.sin(Math.PI * 0.6) : 1;
     const r = b.r * Math.min(pop, 1.05);
     const y = b.y - age * 0.006;
-    const alpha = Math.min(1, (1 - p) * 1.4) * (b === this.hover ? 1 : 0.9);
+    // Coins outside the focus stay visible as faint context, like silent edits in Listen to Wikipedia.
+    const alpha = Math.min(1, (1 - p) * 1.4) * (b === this.hover ? 1 : 0.9) * (n.faint ? 0.22 : 1);
 
     const color =
       n.kind === 'buy' ? COLORS.buy : n.kind === 'sell' ? COLORS.sell : n.kind === 'create' ? COLORS.create : n.kind === 'failed' ? COLORS.failed : COLORS.gold;
@@ -232,7 +234,7 @@ export class Renderer {
       ctx.fillStyle = `rgba(${color}, ${alpha * 0.9})`;
       ctx.fill();
       ctx.restore();
-      if (n.label) this.drawLabel(n.label, b.x, y + s + 12, 11, alpha * 0.85, color);
+      if (n.label && !n.faint) this.drawLabel(n.label, b.x, y + s + 12, 11, alpha * 0.85, color);
       return;
     }
 
@@ -262,7 +264,7 @@ export class Renderer {
       ctx.lineWidth = 1;
       ctx.stroke();
     }
-    if (n.label && r > 22) this.drawLabel(n.label, b.x, y, Math.max(10, Math.min(20, r * 0.34)), alpha, '255, 255, 255');
+    if (n.label && r > 22 && !n.faint) this.drawLabel(n.label, b.x, y, Math.max(10, Math.min(20, r * 0.34)), alpha, '255, 255, 255');
   }
 
   private drawLabel(text: string, x: number, y: number, size: number, alpha: number, color: string): void {

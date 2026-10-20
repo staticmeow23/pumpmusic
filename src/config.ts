@@ -76,3 +76,9 @@ export const MUSIC = {
   /** Mood (buy vs sell pressure) smoothing time constant. */
   moodHalfLifeMs: 15_000,
 } as const;
+
+/** Activity log: which trades get a line, and how many lines stay on screen. */
+export const FEED = {
+  minSol: 1,
+  maxItems: 8,
+} as const;

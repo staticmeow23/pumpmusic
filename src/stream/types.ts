@@ -13,7 +13,8 @@ export type StreamState =
   | { kind: 'idle' }
   | { kind: 'connecting'; attempt: number }
   | { kind: 'live'; since: number }
-  | { kind: 'waiting'; retryInMs: number; reason: string }
+  /** `failures`: connections in a row that ended without going live (or dropped). */
+  | { kind: 'waiting'; retryInMs: number; reason: string; failures: number }
   | { kind: 'error'; reason: string };
 
 export interface StreamHandlers {

@@ -1,8 +1,10 @@
-import { CHANNELS, DEFAULT_GAINS, MusicEngine, type Channel } from './audio/engine';
-import { DEFAULT_WS_ENDPOINTS, MUSIC } from './config';
+import { CHANNELS, DEFAULT_GAINS, MusicEngine, type Channel, type VisualNote } from './audio/engine';
+import { DEFAULT_WS_ENDPOINTS, FEED, MUSIC } from './config';
 import { DemoStream } from './stream/demo-stream';
 import { RpcStream, isValidWsUrl, maskEndpoint } from './stream/rpc-stream';
 import type { Stream, StreamState, TxMessage } from './stream/types';
+import { feedLine, type FeedLine } from './ui/feed';
+import { coinFromHash, hashForCoin } from './ui/focus';
 import { RateWindow, estimateCost, formatBytes, formatCompact } from './ui/metrics';
 import { Renderer } from './viz/renderer';
 
@@ -68,7 +70,12 @@ for (const ch of CHANNELS) engine.setGain(ch, settings.gains[ch]);
 const canvas = $<HTMLCanvasElement>('stage');
 let activity = 0;
 const renderer = new Renderer(canvas, () => ({ mode: engine.stats().mode, activity }));
-engine.onVisual = (n) => renderer.push(n);
+engine.onVisual = (n) => {
+  renderer.push(n);
+  const line = feedLine(n, engine.focused !== null);
+  // The log line appears when the note sounds, not when the data arrives.
+  if (line) setTimeout(() => addFeedLine(line), Math.max(0, n.at - performance.now()));
+};
 engine.onSlotMark = (m) => renderer.slot(m);
 
 // -------------------------------------------------------------------- metrics
@@ -136,6 +143,66 @@ function renderStats(): void {
   text('s-credits', formatCompact(cost.heliusCreditsPerMonth));
   text('s-free', `${(cost.freePlanShare * 100).toFixed(0)} %`);
   text('s-decoder', `fallback ${decoder.fallback} · foreign ${decoder.foreign} · bad ${decoder.malformed}`);
+  refreshFocusName();
+}
+
+// ----------------------------------------------------------------------- feed
+
+function addFeedLine(line: FeedLine): void {
+  if (!engine.running) return;
+  const list = $('feed');
+  const li = document.createElement('li');
+  li.className = line.tone;
+  const dot = document.createElement('span');
+  dot.className = 'dot';
+  let label: HTMLElement;
+  if (line.link) {
+    // Links are only ever built from validated base58 strings (see engine).
+    const a = document.createElement('a');
+    a.href = line.link;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    label = a;
+  } else {
+    label = document.createElement('span');
+  }
+  label.textContent = line.text;
+  li.append(dot, label);
+  list.prepend(li);
+  while (list.children.length > FEED.maxItems) list.lastElementChild?.remove();
+}
+
+// ---------------------------------------------------------------------- focus
+
+const shortAddress = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
+
+/** Hear one coin only (the token zoom level); null brings back the whole market. */
+function setFocus(coin: string | null, link: string | null): void {
+  engine.setFocus(coin);
+  $('focusbar').hidden = coin === null;
+  const a = $<HTMLAnchorElement>('focus-link');
+  a.hidden = !link;
+  if (link) a.href = link;
+  $('feed').replaceChildren();
+  refreshFocusName();
+  try {
+    history.replaceState(null, '', coin ? hashForCoin(coin) : location.pathname + location.search);
+  } catch {
+    // Some embedded or file:// contexts refuse history changes; the focus still works.
+  }
+}
+
+/** The ticker often arrives after the focus was set (with the coin's next create or trade). */
+function refreshFocusName(): void {
+  const coin = engine.focused;
+  if (!coin) return;
+  const sym = engine.symbolOf(coin);
+  text('focus-name', sym ? `$${sym}` : shortAddress(coin));
+}
+
+function onBubbleClick(note: VisualNote): void {
+  if (note.coin && note.coin !== engine.focused) setFocus(note.coin, note.link);
+  else if (note.link) window.open(note.link, '_blank', 'noopener,noreferrer');
 }
 
 // --------------------------------------------------------------------- status
@@ -152,7 +219,11 @@ function showState(state: StreamState, label: string): void {
   text('status-text', msg);
   pill.title = msg;
   if (state.kind === 'error') toast(state.reason);
+  // Retrying forever in silence helps nobody: after a few refusals, offer a way out.
+  if (state.kind === 'live' || state.kind === 'idle') $('rpc-help').hidden = true;
+  else if (state.kind === 'waiting' && state.failures >= HELP_AFTER_FAILURES && settings.source === 'public') $('rpc-help').hidden = false;
 }
+const HELP_AFTER_FAILURES = 4;
 
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 function toast(message: string): void {
@@ -166,6 +237,12 @@ function toast(message: string): void {
 // ---------------------------------------------------------------- start/stop
 
 let stream: Stream | null = null;
+const handlers = {
+  onTx,
+  onSlot: (slot: number, at: number) => engine.handleSlot(slot, at),
+  onState: (s: StreamState) => showState(s, stream?.label ?? ''),
+  onBytes: (n: number) => rates.bytes.add(n, performance.now()),
+};
 let statsTimer: ReturnType<typeof setInterval> | null = null;
 
 function selectedSource(): Source {
@@ -201,12 +278,6 @@ async function start(): Promise<void> {
   }
   engine.setMasterVolume(settings.master);
 
-  const handlers = {
-    onTx,
-    onSlot: (slot: number, at: number) => engine.handleSlot(slot, at),
-    onState: (s: StreamState) => showState(s, stream?.label ?? ''),
-    onBytes: (n: number) => rates.bytes.add(n, performance.now()),
-  };
   stream = source === 'demo' ? new DemoStream(handlers) : new RpcStream(source === 'custom' ? url : DEFAULT_WS_ENDPOINTS, handlers);
   stream.start();
 
@@ -214,6 +285,9 @@ async function start(): Promise<void> {
   $('intro').hidden = true;
   $('actions').hidden = false;
   setPanel('stats', window.innerWidth > 720);
+  setFeed(window.innerWidth > 720);
+  const shared = coinFromHash(location.hash);
+  if (shared) setFocus(shared, `https://pump.fun/coin/${shared}`);
   statsTimer = setInterval(renderStats, 500);
 }
 
@@ -228,6 +302,10 @@ async function stop(): Promise<void> {
   $('actions').hidden = true;
   setPanel('stats', false);
   setPanel('mixer', false);
+  setFeed(false);
+  $('feed').replaceChildren();
+  engine.setFocus(null);
+  $('focusbar').hidden = true;
   $('intro').hidden = false;
   showState({ kind: 'idle' }, '');
 }
@@ -245,6 +323,11 @@ function setPanel(which: 'stats' | 'mixer', open: boolean): void {
   }
 }
 const togglePanel = (which: 'stats' | 'mixer') => setPanel(which, $(which).hidden !== false);
+
+function setFeed(open: boolean): void {
+  $('feed').hidden = !open;
+  $('btn-feed').setAttribute('aria-pressed', String(open));
+}
 
 let muted = false;
 function setMuted(value: boolean): void {
@@ -329,26 +412,50 @@ function initIntro(): void {
   sync();
 }
 
+function chooseSource(source: Source): void {
+  for (const r of document.querySelectorAll<HTMLInputElement>('input[name="source"]')) r.checked = r.value === source;
+  $('custom-box').hidden = source !== 'custom';
+}
+
+$('help-custom').addEventListener('click', () => {
+  void stop().then(() => {
+    chooseSource('custom');
+    $('endpoint').focus();
+  });
+});
+$('help-demo').addEventListener('click', () => {
+  // Swap only the data source: the audio keeps running, no new click needed.
+  stream?.stop();
+  chooseSource('demo');
+  settings.source = 'demo';
+  saveSettings(settings);
+  stream = new DemoStream(handlers);
+  stream.start();
+});
+
 $('btn-start').addEventListener('click', () => void start());
 $('btn-stop').addEventListener('click', () => void stop());
 $('btn-mute').addEventListener('click', () => setMuted(!muted));
 $('btn-stats').addEventListener('click', () => togglePanel('stats'));
 $('btn-mixer').addEventListener('click', () => togglePanel('mixer'));
+$('btn-feed').addEventListener('click', () => setFeed($('feed').hidden !== false));
+$('focus-exit').addEventListener('click', () => setFocus(null, null));
 
 window.addEventListener('keydown', (e) => {
   if (!engine.running || e.target instanceof HTMLInputElement) return;
   if (e.key === 'm' || e.key === 'M') setMuted(!muted);
   if (e.key === 's' || e.key === 'S') togglePanel('stats');
   if (e.key === 'x' || e.key === 'X') togglePanel('mixer');
+  if (e.key === 'f' || e.key === 'F') setFeed($('feed').hidden !== false);
+  if (e.key === 'Escape' && engine.focused) setFocus(null, null);
 });
 
 canvas.addEventListener('mousemove', (e) => {
   canvas.classList.toggle('clickable', renderer.hitTest(e.clientX, e.clientY) !== null);
 });
 canvas.addEventListener('click', (e) => {
-  const link = renderer.hitTest(e.clientX, e.clientY);
-  // Links are only ever built from validated base58 strings (see engine).
-  if (link) window.open(link, '_blank', 'noopener,noreferrer');
+  const note = renderer.hitTest(e.clientX, e.clientY);
+  if (note) onBubbleClick(note);
 });
 
 buildMixer();

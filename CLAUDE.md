@@ -26,9 +26,18 @@
 
 **Status**
 - Fertig: Decoder + Log-Parser, WebSocket-Stream (Reconnect mit Backoff, Watchdog, Dedupe, API-Key-Maskierung), Demo-Stream, Slot-Uhr (Regression, Reset bei Sprüngen), Musiktheorie, 13 Instrumente + Pad, Engine, BitListen-artige Blasen-Visualisierung, Statistik-/Kosten-Panel, Mixer, Mobile-Layout, Fake-RPC (`scripts/mock-rpc.mjs`) mit echten Logs.
-- Getestet: 29 Unit-Tests (echte Fixtures, abgeglichen mit unabhängigem IDL-Decoder), Headless-Chromium-Durchläufe (Demo, Mock-RPC mit Abbruch/Reconnect, abgelehntes Abo, Stop/Start, Mobile), Offline-Rendering aller Instrumente (Pegel ausbalanciert).
+- Getestet: 35 Unit-Tests (echte Fixtures, abgeglichen mit unabhängigem IDL-Decoder), Headless-Chromium-Durchläufe (Demo, Mock-RPC mit Abbruch/Reconnect, abgelehntes Abo, Stop/Start, Mobile), Offline-Rendering aller Instrumente (Pegel ausbalanciert).
 - Live auf GitHub Pages: https://staticmeow23.github.io/pumpmusic/ (Repo `staticmeow23/pumpmusic`, Deploy per GitHub Actions nach grünem `npm run check`).
 - **Nicht getestet:** live gegen den öffentlichen RPC (Cloud-Umgebung blockiert die Hosts). Erster Live-Versuch des Nutzers mit `mainnet-beta` verband nicht → Endpunkt auf `api.mainnet.solana.com` umgestellt, mit automatischem Wechsel zwischen beiden. Offene Frage: erlaubt/drosselt der öffentliche RPC `logsSubscribe` auf Pump dauerhaft?
+
+- Fokus-Modus (Blase anklicken → nur dieser Coin, `#coin=<mint>` teilbar), Feed (Ereignis-Log), Hilfekarte bei wiederholter RPC-Ablehnung (Okt. 2026).
+- **Live-Test 1 (Nutzer, Okt. 2026):** `api.mainnet.solana.com` und `mainnet-beta` schließen die Verbindung von github.io sofort (1006). Vermutlich Website-/Origin-Sperre (Solana-Doku: 403 = IP oder Website gesperrt). Nächster Versuch: eigener Helius-Key (Free-Plan reicht für ~100+ h/Monat).
+
+**Ideen aus ähnlichen Projekten (Backlog, Okt. 2026 recherchiert)**
+- Listen to Wikipedia (hatnote): Position per Seed aus dem Titel (gleicher Coin = gleiche Stelle); Zähler „You have listened to N trades“; Einstellungen per URL-Hash; Rate gewichtet über 6×10-s-Buckets; harte Obergrenze gleichzeitiger Noten (haben wir).
+- BitListen: Preis-Ticker (SOL/USD) – braucht externe Quelle, Kosten/Abhängigkeit vorher klären; Mindestgröße-Filter („nur Wale“); Instrumentwahl.
+- Ethereum Listener / ethersong: Instrumentwahl pro Ereignis, Lautstärke je Ereignis (Mixer haben wir).
+- Eine fertige Sonifikation für Solana wurde nicht gefunden → Slotwave wäre die erste.
 
 **Nächste Schritte (Vorschlag)**
 1. Live-Test mit dem öffentlichen RPC (`npm run dev`, Quelle „Public Solana RPC“): Stabilität, Late-%, echte Datenrate und Credit-Schätzung im Panel ablesen.

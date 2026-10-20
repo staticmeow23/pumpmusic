@@ -55,6 +55,18 @@ Optionen: `--drop-after=6` (Verbindung bricht nach 6 s ab), `--refuse-logs` (RPC
 - **Takt = Netzwerk:** Die Uhr misst die echte Slot-Zeit (Regression über die letzte Minute). 4 Slots = 1 Schlag ≈ 75 BPM.
 - **Puffer:** Slot S erklingt bei „Zeitpunkt von S + Puffer“ (Standard 1,2 s). So landen auch spät eintreffende Trades auf ihrem Slot und die Reihenfolge der Chain bleibt erhalten. Pro Slot spielt jedes Instrument höchstens 2 Noten; alles darüber wird trotzdem gezeichnet und macht das Pad heller.
 
+## Bedienen
+
+- **Blase anklicken = nur noch diesen Coin hören** (wie der Tag-Filter bei „Listen to Wikipedia“).
+  Alle anderen Trades werden leise und blass, damit man den Markt drumherum noch sieht. Oben steht
+  „Only $TICKER“ mit Link zu pump.fun und „Show all“ (oder Esc). Die Adresse bekommt `#coin=<mint>`,
+  so lässt sich ein Coin als Link teilen.
+- **Feed** (F): Liste der letzten Ereignisse wie das Edit-Log bei „Listen to Wikipedia“: neue Coins,
+  volle Curves, Graduations, Trades ab 1 SOL und Wale. Im Fokus-Modus jeder Trade des Coins.
+- **Stats** (S), **Mixer** (X), **Mute** (M).
+- Lehnt der öffentliche RPC mehrmals hintereinander ab, bietet die App an, auf einen eigenen Endpunkt
+  oder die Demo zu wechseln.
+
 ## Daten & Kosten
 
 - Die App abonniert per `logsSubscribe` beide Pump-Programme (Bonding Curve `6EF8…F6P`, PumpSwap `pAMM…EA`) und per `slotSubscribe` die Slots.
@@ -95,6 +107,8 @@ src/
   audio/engine.ts        Events → Noten + Bilder, Timing, Mixer
   viz/renderer.ts        Canvas mit Blasen, Wellen und Slot-Leiste
   ui/metrics.ts          Raten, Kostenabschätzung
+  ui/feed.ts             Zeilen fürs Ereignis-Log
+  ui/focus.ts            teilbarer Fokus-Link (#coin=…)
   main.ts                Oberfläche
 scripts/build.mjs        baut alles in eine einzige dist/index.html
 scripts/mock-rpc.mjs     Fake-RPC für Offline-Tests
@@ -117,9 +131,12 @@ Keine Laufzeit-Abhängigkeiten. Entwicklungs-Tools: TypeScript, esbuild, tsx.
 
 ## Bekannte Grenzen
 
-- Ob der öffentliche RPC `logsSubscribe` auf Pump dauerhaft erlaubt und wie stark er drosselt, ließ sich
-  aus der Entwicklungsumgebung nicht live prüfen. Die App zeigt Ablehnungen und Abbrüche im Status an
-  und verbindet sich mit Backoff neu. Notfalls: Demo oder eigener Endpunkt.
+- **Öffentlicher RPC:** Die App verbindet sich mit `api.mainnet.solana.com` (laut Solana-Doku der aktuelle Name)
+  und weicht auf `api.mainnet-beta.solana.com` aus. Beim ersten Live-Test (Okt. 2026) haben beide die
+  Verbindung aus dem Browser sofort geschlossen (Code 1006). Die Solana-Doku sagt, dass öffentliche Endpunkte
+  IPs oder Websites sperren können (HTTP 403); der Browser zeigt den Grund nicht. Verlässlich ist daher ein
+  eigener Endpunkt. Für den eigenen Gebrauch reicht der Helius-Gratis-Plan: 1 Mio. Credits = 50 GB,
+  bei 0,3–0,4 GB pro Stunde also gut 100 Stunden Zuhören im Monat.
 - Bei PumpSwap-Trades kennt das Event nur den Pool, nicht die Quote-Währung. Deshalb steht dort kein SOL-Betrag.
 - Commitment `processed`: Trades werden so früh wie möglich gehört. Sehr selten kann eine Transaktion
   danach noch verworfen werden.

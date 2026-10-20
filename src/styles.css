@@ -205,9 +205,68 @@ button.quiet { color: var(--muted); }
   backdrop-filter: blur(10px);
 }
 
+.focusbar {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 3px 4px 3px 12px;
+  border: 1px solid rgba(94, 234, 212, 0.45);
+  border-radius: 999px;
+  background: var(--panel);
+  backdrop-filter: blur(8px);
+  font-size: 12px; color: var(--muted);
+}
+.focusbar b { color: var(--buy); font-weight: 600; }
+.focusbar a { color: var(--text); text-decoration: none; }
+.focusbar a:hover { text-decoration: underline; }
+.focusbar button { padding: 3px 10px; font-size: 12px; }
+
+.feed {
+  position: fixed; top: 60px; right: 16px;
+  width: 300px; margin: 0; padding: 0;
+  list-style: none;
+  display: grid; gap: 4px;
+  z-index: 1;
+  font-size: 12.5px;
+  pointer-events: none;
+}
+.feed li {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: rgba(13, 18, 34, 0.55);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  animation: feed-in 0.35s ease-out;
+}
+.feed li:nth-child(n + 4) { opacity: 0.75; }
+.feed li:nth-child(n + 6) { opacity: 0.5; }
+.feed li:nth-child(n + 8) { opacity: 0.3; }
+.feed a { color: var(--text); text-decoration: none; pointer-events: auto; overflow: hidden; text-overflow: ellipsis; }
+.feed a:hover { text-decoration: underline; }
+.feed .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.feed .buy .dot { background: var(--buy); }
+.feed .sell .dot { background: var(--sell); }
+.feed .create .dot { background: var(--lilac); }
+.feed .gold .dot { background: var(--gold); }
+@keyframes feed-in { from { opacity: 0; transform: translateY(-4px); } }
+
+.helpcard {
+  position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(440px, calc(100vw - 32px));
+  background: var(--panel); border: 1px solid rgba(252, 211, 77, 0.35); border-radius: var(--radius);
+  padding: 4px 18px 16px; z-index: 5; font-size: 13px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+.helpcard p { margin: 12px 0 0; color: var(--muted); }
+.helpcard b { color: var(--text); }
+.helpactions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+button.accent { color: #04131a; background: var(--buy); border-color: transparent; font-weight: 600; }
+button.accent:hover { background: #99f6e4; }
+
 @media (max-width: 720px) {
   .topbar { flex-wrap: wrap; gap: 8px; padding: 12px; }
   .pill { order: 3; max-width: 100%; }
+  .focusbar { order: 4; }
+  .feed { top: 160px; left: 16px; right: 16px; width: auto; }
   .actions { gap: 6px; }
   .actions button { padding: 5px 10px; font-size: 12px; }
   .panel { width: calc(100vw - 32px); bottom: 64px; max-height: 45vh; }
@@ -219,5 +278,5 @@ button.quiet { color: var(--muted); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pill .dot { animation: none !important; }
+  .pill .dot, .feed li { animation: none !important; }
 }
