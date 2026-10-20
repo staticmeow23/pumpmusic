@@ -8,6 +8,8 @@ Inspiriert von BitListen („Listen to Bitcoin“) und „Listen to Wikipedia“
 
 ## Starten
 
+**Live:** https://staticmeow23.github.io/pumpmusic/ (wird bei jedem Push auf `main` automatisch neu gebaut, nur wenn `npm run check` grün ist).
+
 **Ohne Installation:** `dist/index.html` doppelklicken, „Start listening“ drücken.
 
 **Mit Node (zum Weiterentwickeln):**
