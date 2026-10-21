@@ -91,22 +91,30 @@ export class RelayHub extends DurableObject<Env> {
   private connectUpstream(h: UpstreamHandlers): UpstreamPort {
     let ws: WebSocket | null = null;
     let closed = false;
-    const url = this.env.HELIUS_WS_URL.replace(/^wss:/, 'https:').replace(/^ws:/, 'http:');
+    // Forgive the usual paste slips: spaces, quotes, the https:// form of the same URL.
+    const raw = this.env.HELIUS_WS_URL.trim().replace(/^["']|["']$/g, '');
+    const url = raw.replace(/^wss:/, 'https:').replace(/^ws:/, 'http:');
+    if (!/^https?:\/\//.test(url)) {
+      setTimeout(() => h.onClose('HELIUS_WS_URL must look like wss://mainnet.helius-rpc.com/?api-key=…'), 0);
+      return { send: () => {}, close: () => {} };
+    }
     fetch(url, { headers: { Upgrade: 'websocket' } })
-      .then((res) => {
+      .then(async (res) => {
         const socket = res.webSocket;
-        if (!socket) throw new Error(`upgrade refused: HTTP ${res.status}`);
+        if (!socket) {
+          const body = (await res.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 120);
+          throw new Error(`upgrade refused: HTTP ${res.status} ${body}`.trim());
+        }
         socket.accept();
         if (closed) return socket.close(1000, 'not needed');
         ws = socket;
         socket.addEventListener('message', (e) => h.onMessage(typeof e.data === 'string' ? e.data : new TextDecoder().decode(e.data)));
-        socket.addEventListener('close', () => h.onClose());
-        socket.addEventListener('error', () => h.onClose());
+        socket.addEventListener('close', (e) => h.onClose(`closed by upstream: ${e.code} ${e.reason}`.trim()));
+        socket.addEventListener('error', () => h.onClose('upstream socket error'));
         h.onOpen();
       })
       .catch((e: unknown) => {
-        console.log(`upstream connect failed: ${(e as Error).message}`);
-        h.onClose();
+        h.onClose(`connect failed: ${(e as Error).message}`);
       });
     return {
       send: (text) => ws?.send(text),

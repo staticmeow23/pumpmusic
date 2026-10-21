@@ -25,7 +25,8 @@ export interface UpstreamPort {
 export interface UpstreamHandlers {
   onOpen(): void;
   onMessage(text: string): void;
-  onClose(): void;
+  /** `reason` ends up on the public /health page; it is masked there. */
+  onClose(reason?: string): void;
 }
 
 export interface HubLimits {
@@ -61,6 +62,11 @@ export const DEFAULT_LIMITS: HubLimits = {
 };
 
 const B58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+/** Hides query values and long path tokens: API keys sit in one or the other. */
+export function maskSecrets(text: string): string {
+  return text.replace(/([?&][^=&\s]+=)[^&\s]*/g, '$1•••').replace(/\/[A-Za-z0-9_-]{20,}(?=\/|\s|$)/g, '/•••');
+}
 const IDLE_CLOSE_MS = 30_000;
 const WATCHDOG_MS = 60_000;
 
@@ -109,6 +115,8 @@ export class Hub {
 
   private day = '';
   private dayBytes = 0;
+  private lastError: string | null = null;
+  private connects = 0;
 
   constructor(private readonly opts: HubOptions) {}
 
@@ -252,6 +260,7 @@ export class Hub {
   private ensureUpstream(): void {
     if (this.upstream || this.retryTimer !== null || this.overBudget()) return;
     this.attempt++;
+    this.connects++;
     const handlers: UpstreamHandlers = {
       onOpen: () => {
         if (this.upstream !== port) return;
@@ -271,8 +280,8 @@ export class Hub {
       onMessage: (text) => {
         if (this.upstream === port) this.upstreamMessage(text);
       },
-      onClose: () => {
-        if (this.upstream === port) this.upstreamLost('upstream closed');
+      onClose: (reason) => {
+        if (this.upstream === port) this.upstreamLost(reason ?? 'upstream closed');
       },
     };
     const port = this.opts.connect(handlers);
@@ -280,7 +289,8 @@ export class Hub {
   }
 
   private upstreamLost(reason: string): void {
-    this.opts.log?.(`upstream lost: ${reason}`);
+    this.lastError = maskSecrets(reason);
+    this.opts.log?.(`upstream lost: ${this.lastError}`);
     const old = this.upstream;
     this.upstream = null;
     this.upstreamOpen = false;
@@ -466,7 +476,14 @@ export class Hub {
     }
   }
 
-  stats(): { clients: number; coins: number; upstream: boolean; dayBytes: number } {
-    return { clients: this.clients.size, coins: this.coins.size, upstream: this.upstreamOpen, dayBytes: this.dayBytes };
+  stats(): { clients: number; coins: number; upstream: boolean; dayBytes: number; attempts: number; lastError: string | null } {
+    return {
+      clients: this.clients.size,
+      coins: this.coins.size,
+      upstream: this.upstreamOpen,
+      dayBytes: this.dayBytes,
+      attempts: this.connects,
+      lastError: this.lastError,
+    };
   }
 }

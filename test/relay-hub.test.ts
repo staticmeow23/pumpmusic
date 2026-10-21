@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { DEFAULT_LIMITS, Hub, type HubLimits, type UpstreamHandlers } from '../relay/src/hub';
+import { DEFAULT_LIMITS, Hub, maskSecrets, type HubLimits, type UpstreamHandlers } from '../relay/src/hub';
 
 const A = '7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr';
 const B = 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263';
@@ -154,4 +154,24 @@ test('the daily budget stops the relay until the next UTC day', () => {
   r.advance(24 * 3_600_000);
   r.hub.restoreUsage({ day: '2026-10-21', bytes: 0 });
   assert.equal(typeof c.sub(B).result, 'number', 'a new day, a new budget');
+});
+
+test('health shows why the upstream failed, without leaking the API key', () => {
+  const r = rig();
+  const c = r.client('c');
+  c.sub(A);
+  r.upstreams[0]!.h.onClose('connect failed: upgrade refused: HTTP 401 for https://mainnet.helius-rpc.com/?api-key=SECRET-KEY-123');
+  const s = r.hub.stats();
+  assert.match(s.lastError ?? '', /HTTP 401/);
+  assert.ok(!(s.lastError ?? '').includes('SECRET-KEY-123'), s.lastError ?? '');
+  assert.equal(s.attempts, 1);
+  r.advance(1_500);
+  r.upstreams[1]!.h.onOpen();
+  r.confirm();
+  assert.equal(r.hub.stats().lastError, 'connect failed: upgrade refused: HTTP 401 for https://mainnet.helius-rpc.com/?api-key=•••', 'kept for diagnosis');
+});
+
+test('masking hides keys in queries and long path tokens', () => {
+  assert.equal(maskSecrets('wss://x.quiknode.pro/abcdefghijklmnopqrstuvwxyz012345/ failed'), 'wss://x.quiknode.pro/•••/ failed');
+  assert.equal(maskSecrets('https://h.example/?api-key=K1&x=2'), 'https://h.example/?api-key=•••&x=•••');
 });
