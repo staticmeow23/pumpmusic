@@ -47,3 +47,26 @@ export async function fetchCoinInfo(httpUrl: string, mint: string): Promise<Coin
     clearTimeout(timer);
   }
 }
+
+/** The relay serves tickers next to its socket: wss://host/ws -> https://host/token/<mint>. */
+export function relayMetaUrl(wsUrl: string, mint: string): string | null {
+  try {
+    const u = new URL(wsUrl);
+    if (u.protocol !== 'wss:' && u.protocol !== 'ws:') return null;
+    return `${u.protocol === 'wss:' ? 'https:' : 'http:'}//${u.host}/token/${mint}`;
+  } catch {
+    return null;
+  }
+}
+
+/** Name and ticker from the relay; cleaned again, the relay is just another source of text. */
+export async function fetchRelayInfo(url: string): Promise<CoinInfo | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const j = (await res.json()) as { name?: unknown; symbol?: unknown };
+    return parseAsset({ result: { content: { metadata: { name: j.name, symbol: j.symbol } } } });
+  } catch {
+    return null;
+  }
+}

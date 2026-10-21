@@ -53,6 +53,12 @@ und ein kostenloses Cloudflare-Konto ([dash.cloudflare.com/sign-up](https://dash
 6. **Die Adresse an Claude schicken.** Claude trägt sie in die App ein (`RELAY_WS_URL` in `src/config.ts`,
    mit `wss://` und `/ws` am Ende), danach steht „Slotwave relay“ als Standard-Quelle in der App.
 
+## Ticker
+
+`GET /token/<CA>` liefert Name und Ticker eines Coins. Das Relay fragt Helius (`getAsset`) einmal pro Coin und
+merkt sich die Antwort für immer; unbekannte Coins eine Stunde lang. Höchstens 2.000 neue Coins pro Tag, damit
+niemand mit Zufallsadressen Credits verbrennt.
+
 ## Überwachen
 
 - `…/health` zeigt Zuhörer, Coins, ob Helius verbunden ist und die heutigen Bytes.

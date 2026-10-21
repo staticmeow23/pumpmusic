@@ -15,5 +15,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src", "test", "scripts", "relay/src/hub.ts"]
+  "include": ["src", "test", "scripts", "relay/src/hub.ts", "relay/src/meta.ts"]
 }

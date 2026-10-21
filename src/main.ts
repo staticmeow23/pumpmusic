@@ -1,7 +1,7 @@
 import { CHANNELS, DEFAULT_GAINS, MusicEngine, type Channel, type VisualNote } from './audio/engine';
 import { COIN_COLORS, DEFAULT_WS_ENDPOINTS, RELAY_WS_URL, FEED, HELIUS_CREDITS_PER_100KB, HELIUS_FREE_MONTHLY_CREDITS, MAX_COINS, MUSIC } from './config';
 import { CoinDemoStream } from './stream/coin-demo';
-import { fetchCoinInfo, heliusHttpUrl } from './stream/coin-info';
+import { fetchCoinInfo, fetchRelayInfo, heliusHttpUrl, relayMetaUrl } from './stream/coin-info';
 import { DemoStream } from './stream/demo-stream';
 import { RpcStream, isValidWsUrl, maskEndpoint } from './stream/rpc-stream';
 import type { Stream, StreamState, StreamTarget, TxMessage } from './stream/types';
@@ -427,7 +427,7 @@ async function start(mode: 'coin' | 'market' = 'coin'): Promise<void> {
     stream = source === 'demo' ? new CoinDemoStream(handlers, mints) : new RpcStream(endpoints, handlers, target, name);
     buildCoinRows(mints);
     showCoinBar(mints);
-    if (source === 'custom') for (const m of mints) void lookUpName(url, m);
+    if (source === 'custom' || source === 'relay') for (const m of mints) void lookUpName(source, url, m);
   } else {
     engine.setCoins([]);
     trackers = new Map();
@@ -468,11 +468,16 @@ async function stop(): Promise<void> {
   showState({ kind: 'idle' }, '');
 }
 
-/** Helius endpoints can tell us the coin's ticker (one getAsset call). */
-async function lookUpName(wsUrl: string, mint: string): Promise<void> {
-  const http = heliusHttpUrl(wsUrl);
-  if (!http) return;
-  const info = await fetchCoinInfo(http, mint);
+/** Tickers of coins that existed before we joined: from the relay, or from a Helius endpoint (getAsset). */
+async function lookUpName(source: Source, wsUrl: string, mint: string): Promise<void> {
+  let info = null;
+  if (source === 'relay') {
+    const meta = relayMetaUrl(RELAY_WS_URL, mint);
+    info = meta ? await fetchRelayInfo(meta) : null;
+  } else {
+    const http = heliusHttpUrl(wsUrl);
+    info = http ? await fetchCoinInfo(http, mint) : null;
+  }
   if (info && engine.coinList.includes(mint)) {
     engine.setSymbol(mint, info.symbol);
     refreshFocusName();

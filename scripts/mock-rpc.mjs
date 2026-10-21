@@ -52,7 +52,22 @@ function* readFrames(state) {
   }
 }
 
-const server = createServer((_req, res) => res.writeHead(426).end('WebSocket only'));
+// HTTP: answers DAS getAsset with a made-up ticker, so the relay's /token route can be tried offline.
+const server = createServer((req, res) => {
+  if (req.method !== 'POST') return res.writeHead(426).end('WebSocket only');
+  let body = '';
+  req.on('data', (c) => (body += c));
+  req.on('end', () => {
+    let msg = {};
+    try { msg = JSON.parse(body); } catch {}
+    const id = msg.params?.id;
+    if (msg.method !== 'getAsset' || typeof id !== 'string') return res.writeHead(400).end();
+    console.log(`getAsset ${id}`);
+    const symbol = `M${id.slice(0, 3).toUpperCase()}`;
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { content: { metadata: { name: `Mock ${symbol}`, symbol } } } }));
+  });
+});
 server.on('upgrade', (req, socket) => {
   const key = req.headers['sec-websocket-key'];
   const accept = createHash('sha1').update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
