@@ -40,7 +40,7 @@
 
 - **Coin-Modus (Okt. 2026):** CA-Eingabe (auch mehrere, auch pump.fun-/Solscan-Links), teilbarer Link `#coins=A,B`, Kursmelodie, Stats pro Coin (Market Cap, Änderung seit Start, Curve-Fortschritt, Buys/Sells pro Minute), Demo mit simulierten Curves (x·y=k) inkl. Graduation. Getestet: Unit-Tests, Headless (Demo 3 Coins, Fake-RPC mit echtem Fixture-Coin: 33,8 SOL / 12,2 % korrekt, Marktmodus, Mobile). **Noch nicht live getestet.**
 
-- **Relay (Okt. 2026, vom Nutzer gewählt):** `relay/` = Cloudflare Worker + ein Durable Object (`Hub` in `relay/src/hub.ts`, rein und getestet). Spricht das PubSub-Subset der App (logsSubscribe mit genau einer Adresse, slotSubscribe, Unsubscribes), ein Upstream-Abo pro Coin für alle Zuhörer, Upstream zu nach 30 s ohne Zuhörer, Reconnect mit Backoff, Limits: 3 Coins/Zuhörer, 25 Coins, 200 Zuhörer, 1,5 GB/Tag Budget, 30 MB/min pro Adresse. Lokal mit `wrangler dev` + Fake-RPC Ende-zu-Ende getestet (2 Zuhörer → 1 Upstream). **Deployt (21.10.2026)** vom Nutzer (Windows) unter https://slotwave-relay.staticmeow.workers.dev (`/health`, `/ws`), `RELAY_WS_URL` gesetzt, „Slotwave relay“ ist Standard-Quelle. Live über das Relay noch nicht bestätigt. Neu deployen: in `relay/` `npx wrangler deploy` (Windows: vorher `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, Cloudflare verlangt bestätigte E-Mail).
+- **Relay (Okt. 2026, vom Nutzer gewählt):** `relay/` = Cloudflare Worker + ein Durable Object (`Hub` in `relay/src/hub.ts`, rein und getestet). Spricht das PubSub-Subset der App (logsSubscribe mit genau einer Adresse, slotSubscribe, Unsubscribes), ein Upstream-Abo pro Coin für alle Zuhörer, Upstream zu nach 30 s ohne Zuhörer, Reconnect mit Backoff, Limits: 3 Coins/Zuhörer, 25 Coins, 200 Zuhörer, 1,5 GB/Tag Budget, 30 MB/min pro Adresse. Lokal mit `wrangler dev` + Fake-RPC Ende-zu-Ende getestet (2 Zuhörer → 1 Upstream). **Deployt (21.10.2026)** vom Nutzer (Windows) unter https://slotwave-relay.staticmeow.workers.dev (`/health`, `/ws`), `RELAY_WS_URL` gesetzt, „Slotwave relay“ ist Standard-Quelle. **Live über das Relay bestätigt (21.10.2026, Nutzer).** Erster Versuch: Zuhörer verbunden, aber `upstream:false` → `/health` zeigt seitdem `attempts` und `lastError` (Key maskiert); Secret wird getrimmt, Anführungszeichen ignoriert. Neu deployen: in `relay/` `npx wrangler deploy` (Windows: vorher `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, Cloudflare verlangt bestätigte E-Mail).
 
 **Datenquellen für Zuhörer ohne eigenen Key (recherchiert Okt. 2026; entschieden: eigenes Relay)**
 - Öffentlicher RPC: blockt Websites (Live-Test 1) → raus.
@@ -54,11 +54,11 @@
 - Ethereum Listener / ethersong: Instrumentwahl pro Ereignis, Lautstärke je Ereignis (Mixer haben wir).
 - Eine fertige Sonifikation für Solana wurde nicht gefunden → Slotwave wäre die erste.
 
-**Nächste Schritte (Vorschlag)**
-1. Live-Test mit dem öffentlichen RPC (`npm run dev`, Quelle „Public Solana RPC“): Stabilität, Late-%, echte Datenrate und Credit-Schätzung im Panel ablesen.
-2. Je nach Ergebnis: Puffer/Notenlimits feinjustieren; Klang nach Gehör nachschärfen.
-3. Später mit Helius: Relay-Server (eine Helius-Verbindung, kompakte Events ~50 B/Trade an alle Zuhörer); `src/pump/` läuft unverändert in Node.
-4. Danach: Ausweitung auf ganz Solana mit Zoom-Stufen; Replays berühmter Momente; Hosting kostenlos (GitHub Pages / Cloudflare Pages).
+**Nächste Schritte (Vorschlag, Stand 21.10.2026)**
+1. Echte Messwerte im Coin-Modus über das Relay sammeln (Stats-Panel: Stream KB/s, Trades/min, Late; `/health`: dayBytes pro Stunde) → Tagesbudget (`DAILY_BYTES`) und Limits nachjustieren.
+2. Klang nach Gehör nachschärfen (Kursmelodie, Lautstärken, Pad bei wenigen Trades).
+3. Listener-Bandbreite senken: Relay dekodiert mit `src/pump/` und schickt kompakte Events (~100 B statt ~6 KB pro Tx); fehlgeschlagene Tx im Relay verwerfen.
+4. Backlog: Ticker ohne Helius-DAS für Zuhörer (Relay könnte `getAsset` einmal pro Coin machen und cachen), Ausweitung auf ganz Solana, Replays.
 
 **Arbeitsweise:** Vor Änderungen die betroffenen Module und ihre Verbindungen verstehen; Tests zuerst für Decoder/Parser; nach Änderungen `npm run check`; aktuelle Doku (Helius, pump-public-docs) prüfen statt aus dem Gedächtnis; Kosten vor jedem neuen Dienst mit dem Nutzer klären; nicht ohne Freigabe committen.
 
