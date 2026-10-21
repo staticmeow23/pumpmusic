@@ -5,6 +5,7 @@ import { MUSIC } from '../src/config';
 import {
   MoodMeter,
   PriceMelody,
+  coinNote,
   SCALES,
   chordNotes,
   modeFor,
@@ -118,4 +119,8 @@ test('price melody: missing prices keep the last step', () => {
   const s = m.step(1.1, 1_000);
   assert.equal(m.step(null, 2_000), s);
   assert.equal(m.step(0, 3_000), s);
+});
+
+test('in coin mode a sell sits an octave below a buy at the same price', () => {
+  assert.equal(coinNote(0, 'neutral', 3, 'buy') - coinNote(0, 'neutral', 3, 'sell'), 12);
 });

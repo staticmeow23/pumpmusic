@@ -138,9 +138,13 @@ export function coinPan(index: number, count: number, walletHash: number): numbe
   return Math.max(-0.85, Math.min(0.85, centre + wobble));
 }
 
-/** Note for a trade of the coin you listen to: buys and sells share one melodic line. */
-export function coinNote(slot: number, mode: Mode, step: number): number {
-  return scaleNote(slot, mode, step, 1);
+/**
+ * Note for a trade of a coin you listen to: the price picks the scale step,
+ * sells sound an octave below buys (darker, like the strings under the bells
+ * in Listen to Wikipedia).
+ */
+export function coinNote(slot: number, mode: Mode, step: number, side: 'buy' | 'sell' = 'buy'): number {
+  return scaleNote(slot, mode, step, side === 'sell' ? 0 : 1);
 }
 
 /**

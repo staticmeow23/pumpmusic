@@ -3,7 +3,7 @@ import { FEED } from '../config';
 
 export interface FeedLine {
   text: string;
-  tone: 'buy' | 'sell' | 'create' | 'gold';
+  tone: 'buy' | 'sell' | 'create' | 'gold' | 'rug';
   link: string | null;
 }
 
@@ -25,6 +25,11 @@ export function feedLine(n: VisualNote, focusActive: boolean, coinMode = false):
   switch (n.kind) {
     case 'failed':
       return null;
+    case 'rug': {
+      // The engine puts the coin on the first line of the label and what happened on the second.
+      const [coin, what] = (n.label ?? '').split('\n');
+      return { text: `⚠ ${coin || name} possible rug: ${what ?? ''}`.trim(), tone: 'rug', link: n.link };
+    }
     case 'create':
       return { text: `New coin ${name}`, tone: 'create', link: n.link };
     case 'complete':

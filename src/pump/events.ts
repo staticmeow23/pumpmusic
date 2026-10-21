@@ -28,6 +28,8 @@ export interface TradeEvent {
   progress: number | null;
   /** Trade size in raw quote units (lamports for SOL); on PumpSwap the quote mint is unknown here. */
   quoteAmount: number | null;
+  /** The coin's creator (curve events since 2025); a sell by them is a dev dump. */
+  creator: string | null;
 }
 
 export type Quote = 'sol' | 'usdc' | 'other';
@@ -103,11 +105,13 @@ export function decodeCurveTrade(body: Uint8Array): TradeEvent {
   let quoteAmount: number | null = null;
   let virtualQuoteReserves: number | null = null;
   let realTokenReserves: number | null = null;
+  let creator: string | null = null;
   try {
     r.u64(); // real_sol_reserves
     realTokenReserves = r.u64();
     r.skip(32 + 8 + 8); // fee_recipient, fee_basis_points, fee
-    r.skip(32 + 8 + 8); // creator, creator_fee_basis_points, creator_fee
+    creator = r.pubkey();
+    r.skip(8 + 8); // creator_fee_basis_points, creator_fee
     r.skip(1 + 8 + 8 + 8 + 8); // track_volume .. last_update_timestamp
     r.string(64); // ix_name
     r.skip(1 + 8 + 8 + 8 + 8); // mayhem_mode, cashback_*, buyback_*
@@ -145,7 +149,7 @@ export function decodeCurveTrade(body: Uint8Array): TradeEvent {
   const progress = realTokenReserves === null ? null : Math.min(1, Math.max(0, 1 - realTokenReserves / INITIAL_REAL_TOKEN_RESERVES));
 
   const size = solAmount > 0 ? solAmount : quoteAmount;
-  return { kind: 'trade', venue: 'curve', side: isBuy ? 'buy' : 'sell', token: mint, impact, lamports, user, price, quote, progress, quoteAmount: size };
+  return { kind: 'trade', venue: 'curve', side: isBuy ? 'buy' : 'sell', token: mint, impact, lamports, user, price, quote, progress, quoteAmount: size, creator };
 }
 
 export function decodeCreate(body: Uint8Array): CreateEvent {
@@ -208,6 +212,7 @@ export function decodeSwapTrade(body: Uint8Array, side: Side): TradeEvent {
     quote: null,
     progress: null,
     quoteAmount,
+    creator: null,
   };
 }
 

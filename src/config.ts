@@ -129,3 +129,17 @@ export const COIN_COLORS = [
   '244, 114, 182', // pink
   '253, 164, 175', // coral
 ] as const;
+
+/**
+ * When a coin "rugs" (a heuristic, never proof). Any one of: a single sell
+ * taking a fifth of the pool's quote reserves, the coin's creator selling
+ * 5 % or more, or the price falling 40 % within a minute. One alarm per coin
+ * per two minutes.
+ */
+export const RUG = {
+  dumpImpact: 0.2,
+  devImpact: 0.05,
+  crashDrop: 0.4,
+  windowMs: 60_000,
+  cooldownMs: 120_000,
+} as const;

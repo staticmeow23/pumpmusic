@@ -31,6 +31,7 @@ const COLORS = {
   sell: '251, 113, 133', // rose
   create: '216, 180, 254', // lilac
   gold: '252, 211, 77',
+  rug: '239, 68, 68',
   failed: '148, 163, 184',
 };
 const MAX_BUBBLES = 600;
@@ -46,7 +47,7 @@ export class Renderer {
   private bubbles: Bubble[] = [];
   private waves: Wave[] = [];
   private marks: SlotMark[] = [];
-  private headline: { text: string; born: number } | null = null;
+  private headline: { text: string; born: number; color: string } | null = null;
   private frame = 0;
   private width = 0;
   private height = 0;
@@ -86,8 +87,9 @@ export class Renderer {
   start(): void {
     if (this.frame) return;
     const loop = () => {
-      this.draw(performance.now());
+      // Schedule first: one bad frame must never stop the animation.
       this.frame = requestAnimationFrame(loop);
+      this.draw(performance.now());
     };
     this.frame = requestAnimationFrame(loop);
   }
@@ -132,7 +134,15 @@ export class Renderer {
     if (n.kind === 'migrate') {
       if (n.faint) return;
       this.waves.push({ x: w / 2, y: h / 2, born: now, life: 5_000, maxR: Math.hypot(w, h) * 0.6, color: COLORS.gold, width: 3 });
-      this.headline = { text: n.label ?? 'graduated', born: now };
+      this.headline = { text: `🎓 ${n.label ?? 'graduated'}`, born: now, color: COLORS.gold };
+      return;
+    }
+    if (n.kind === 'rug') {
+      // Two slow, dark red shock waves from where the coin plays, and a warning across the screen.
+      const max = Math.hypot(w, h) * 0.8;
+      this.waves.push({ x, y, born: now, life: 4_500, maxR: max, color: COLORS.rug, width: 4 });
+      this.waves.push({ x, y, born: now + 400, life: 4_500, maxR: max * 0.8, color: COLORS.rug, width: 2 });
+      this.headline = { text: `⚠ ${n.label ?? 'possible rug'}`, born: now, color: COLORS.rug };
       return;
     }
     if (n.kind === 'complete' && !n.faint) {
@@ -171,10 +181,11 @@ export class Renderer {
     // Waves
     this.waves = this.waves.filter((wv) => now - wv.born < wv.life);
     for (const wv of this.waves) {
+      if (now < wv.born) continue; // a delayed wave (e.g. the rug's echo) hasn't started yet
       const p = (now - wv.born) / wv.life;
       const ease = 1 - (1 - p) ** 3;
       ctx.beginPath();
-      ctx.arc(wv.x, wv.y, 10 + ease * wv.maxR, 0, Math.PI * 2);
+      ctx.arc(wv.x, wv.y, Math.max(0, 10 + ease * wv.maxR), 0, Math.PI * 2);
       ctx.strokeStyle = `rgba(${wv.color}, ${0.55 * (1 - p)})`;
       ctx.lineWidth = wv.width;
       ctx.stroke();
@@ -272,17 +283,25 @@ export class Renderer {
     if (n.label && !n.faint) {
       if (r > 22) this.drawLabel(n.label, b.x, y, Math.max(10, Math.min(20, r * 0.34)), alpha, '255, 255, 255');
       // Coin mode labels every trade; small bubbles carry it underneath.
-      else if (coinColor) this.drawLabel(n.label, b.x, y + r + 10, 11, alpha * 0.9, color);
+      else if (coinColor) this.drawLabel(n.label, b.x, y + r + 18, 11, alpha * 0.9, color);
     }
   }
 
+  /** Centred text; lines split on "\n" stack around `y` (ticker above amount). */
   private drawLabel(text: string, x: number, y: number, size: number, alpha: number, color: string): void {
     const { ctx } = this;
     ctx.font = `600 ${size}px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = `rgba(${color}, ${alpha})`;
-    ctx.fillText(text, x, y);
+    const lines = text.split('\n');
+    const step = size * 1.15;
+    const top = y - ((lines.length - 1) * step) / 2;
+    lines.forEach((line, i) => {
+      // Later lines (the amount) a little smaller than the first (the ticker).
+      if (i === 1) ctx.font = `500 ${Math.max(9, size * 0.88)}px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif`;
+      ctx.fillText(line, x, top + i * step);
+    });
   }
 
   private drawHeadline(now: number): void {
@@ -293,7 +312,7 @@ export class Renderer {
       return;
     }
     const a = age < 400 ? age / 400 : age > 3_800 ? (5_000 - age) / 1_200 : 1;
-    this.drawLabel(`🎓 ${hl.text}`, this.width / 2, this.height * 0.42, 30, a, COLORS.gold);
+    this.drawLabel(hl.text, this.width / 2, this.height * 0.42, Math.min(30, this.width / 18), a, hl.color);
   }
 
   /** The heartbeat: one tick per slot, beats grouped by leader window, skipped slots in red. */

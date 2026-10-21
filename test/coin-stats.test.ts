@@ -7,7 +7,7 @@ import type { TxMessage } from '../src/stream/types';
 
 const trade = (over: Partial<TradeEvent>): TradeEvent => ({
   kind: 'trade', venue: 'curve', side: 'buy', token: 'M', impact: 0.01, lamports: 1e8, user: 'U',
-  price: 30_000_000_000 / 1_073_000_000_000_000, quote: 'sol', progress: 0, quoteAmount: 1e8, ...over,
+  price: 30_000_000_000 / 1_073_000_000_000_000, quote: 'sol', progress: 0, quoteAmount: 1e8, creator: null, ...over,
 });
 
 test('market cap of a fresh SOL curve is about 28 SOL', () => {

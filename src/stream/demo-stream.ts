@@ -137,6 +137,7 @@ export class DemoStream implements Stream {
           quote: venue === 'curve' ? 'sol' : null,
           progress: null,
           quoteAmount: Math.round(impact * 32e9),
+          creator: null,
         },
       ]);
     }

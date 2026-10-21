@@ -246,6 +246,8 @@ button.quiet { color: var(--muted); }
 .feed .sell .dot { background: var(--sell); }
 .feed .create .dot { background: var(--lilac); }
 .feed .gold .dot { background: var(--gold); }
+.feed .rug { background: rgba(127, 29, 29, 0.6); color: #fecaca; font-weight: 600; }
+.feed .rug .dot { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
 @keyframes feed-in { from { opacity: 0; transform: translateY(-4px); } }
 
 .ca { display: grid; gap: 6px; margin: 0 0 14px; }

@@ -12,11 +12,11 @@ export function formatAmount(raw: number, quote: Quote): string | null {
   return `${Number(v.toFixed(digits))} ${UNIT[quote]}`;
 }
 
-/** Bubble text in coin mode: "$POPCAT +0.52 SOL" (buy) or "$POPCAT −0.52 SOL" (sell). */
+/** Bubble text in coin mode, two lines: "$POPCAT" above "+0.52 SOL" (buy) or "−0.52 SOL" (sell). */
 export function tradeLabel(symbol: string | null, side: Side, raw: number | null, quote: Quote | null): string | null {
   const amount = raw !== null && raw > 0 && quote ? formatAmount(raw, quote) : null;
   const name = symbol ? `$${symbol}` : null;
   if (!amount) return name;
   const signed = `${side === 'buy' ? '+' : '−'}${amount}`;
-  return name ? `${name} ${signed}` : signed;
+  return name ? `${name}\n${signed}` : signed;
 }

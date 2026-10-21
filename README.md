@@ -63,7 +63,11 @@ Optionen: `--drop-after=6` (Verbindung bricht nach 6 s ab), `--refuse-logs` (RPC
 - **Melodie = Kurs:** Jeder 3-%-Schritt über oder unter dem „Zuhause“-Preis ist ein Tonleiterschritt. Das Zuhause
   wandert langsam mit (Halbwertszeit 3 Minuten): Ein Pump steigt, ein Dump fällt, ein langes Plateau kehrt zur Mitte zurück.
 - **Jeder Coin hat seine Farbe, Tonlage und Spalte** (links → rechts in der Reihenfolge der Eingabe).
-  Kauf = gefüllte Blase + Glocke, Verkauf = Ring + gezupfte Saite. Jede Blase zeigt `$TICKER +0.52 SOL`.
+  Kauf = gefüllte Blase + Glocke, Verkauf = Ring + gedämpfte, düstere Saite eine Oktave tiefer.
+  Jede Blase zeigt den Ticker und darunter den Betrag (`$TICKER` / `+0.52 SOL`).
+- **Rugpull-Alarm:** Verkauft ein einzelner Trade ≥ 20 % des Pools, verkauft der Ersteller des Coins ≥ 5 %, oder fällt
+  der Kurs innerhalb einer Minute um 40 %, ertönt eine dissonante Orgel, rote Druckwellen laufen über den Bildschirm
+  und der Feed meldet „⚠ $TICKER possible rug: …“. Höchstens einmal pro Coin alle 2 Minuten. Eine Heuristik, kein Beweis.
   Klick auf eine Blase öffnet die Transaktion auf Solscan.
 - **Stats** pro Coin: Market Cap, Änderung seit dem Einschalten, Bonding-Curve-Fortschritt, Käufe/Verkäufe pro Minute.
 - Der Link `#coins=<CA1>,<CA2>` öffnet die Seite mit diesen Coins.

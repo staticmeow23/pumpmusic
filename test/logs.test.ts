@@ -124,7 +124,7 @@ test('truncated logs fall back to the instruction name', () => {
   const out = parseLogs(logs, null);
   assert.equal(out.fallbackTrades, 1);
   assert.deepEqual(out.events[0], {
-    kind: 'trade', venue: 'swap', side: 'sell', token: null, impact: null, lamports: null, user: null, price: null, quote: null, progress: null, quoteAmount: null,
+    kind: 'trade', venue: 'swap', side: 'sell', token: null, impact: null, lamports: null, user: null, price: null, quote: null, progress: null, quoteAmount: null, creator: null,
   });
 });
 
@@ -197,4 +197,13 @@ test('every trade carries its size in raw quote units', () => {
   assert.equal(usdc.quoteAmount, expectedEvent('pump-buy-v2.json', 'TradeEvent').quote_amount);
   const swap = parseLogs(fixture('pumpswap-sell.json').logs, null).events[0] as TradeEvent;
   assert.equal(swap.quoteAmount, expectedEvent('pumpswap-sell.json', 'SellEvent').quote_amount_out);
+});
+
+test('curve trades name the coin creator (for spotting a dev dump)', () => {
+  for (const file of ['pump-buy-v2.json', 'pump-create-and-buy.json', 'pump-create-v2-and-buy.json']) {
+    const t = parseLogs(fixture(file).logs, null).events.find((e): e is TradeEvent => e.kind === 'trade')!;
+    assert.equal(t.creator, expectedEvent(file, 'TradeEvent').creator, file);
+  }
+  const swap = parseLogs(fixture('pumpswap-sell.json').logs, null).events[0] as TradeEvent;
+  assert.equal(swap.creator, null);
 });

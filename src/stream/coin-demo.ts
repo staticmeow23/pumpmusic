@@ -36,6 +36,7 @@ interface FakeCurve {
   vTokens: number;
   realTokens: number;
   pool: string | null;
+  creator: string;
 }
 
 /**
@@ -74,6 +75,7 @@ export class CoinDemoStream implements Stream {
         vTokens,
         realTokens: vTokens - (START_VIRTUAL_TOKENS - INITIAL_REAL_TOKEN_RESERVES),
         pool: null,
+        creator: this.address(),
       };
     });
   }
@@ -82,7 +84,7 @@ export class CoinDemoStream implements Stream {
     if (this.timer) return;
     this.handlers.onState({ kind: 'live', since: Date.now() });
     for (const c of this.curves) {
-      this.emit(c, [{ kind: 'create', mint: c.mint, name: `${c.symbol} demo`, symbol: c.symbol, creator: this.address() }]);
+      this.emit(c, [{ kind: 'create', mint: c.mint, name: `${c.symbol} demo`, symbol: c.symbol, creator: c.creator }]);
     }
     this.timer = setInterval(() => this.tick(), NOMINAL_SLOT_MS);
   }
@@ -118,6 +120,11 @@ export class CoinDemoStream implements Stream {
         c.phaseLeft = PHASES[c.phase]!.seconds;
       }
       const ph = PHASES[c.phase]!;
+      // Now and then, in a dump, the dev pulls the rug: one sell of about a third of the pool.
+      if (ph.buyShare < 0.3 && this.rand() < 0.004) {
+        this.trade(i, 'sell', Math.round(c.vSol * 0.3), c.creator);
+        continue;
+      }
       if (this.rand() > (ph.rate * NOMINAL_SLOT_MS) / 1_000) continue;
       const side: Side = this.rand() < ph.buyShare ? 'buy' : 'sell';
       // Mostly small trades (median ~0.15 SOL), now and then a whale of several SOL.
@@ -126,7 +133,7 @@ export class CoinDemoStream implements Stream {
     }
   }
 
-  private trade(index: number, side: Side, lamports: number): void {
+  private trade(index: number, side: Side, lamports: number, seller?: string): void {
     const c = this.curves[index]!;
     const k = c.vSol * c.vTokens;
     const before = c.vSol;
@@ -140,16 +147,16 @@ export class CoinDemoStream implements Stream {
     const tokens = c.vTokens - k / c.vSol;
     c.vTokens = k / c.vSol;
     if (!c.pool) c.realTokens -= tokens;
-    const user = this.wallets[Math.floor(this.rand() ** 2 * this.wallets.length)]!;
+    const user = seller ?? this.wallets[Math.floor(this.rand() ** 2 * this.wallets.length)]!;
     const price = c.vSol / c.vTokens;
     const impact = lamports / before;
 
     if (!c.pool) {
       const progress = Math.min(1, Math.max(0, 1 - c.realTokens / INITIAL_REAL_TOKEN_RESERVES));
-      this.emit(c, [{ kind: 'trade', venue: 'curve', side, token: c.mint, impact, lamports, user, price, quote: 'sol', progress, quoteAmount: lamports }]);
+      this.emit(c, [{ kind: 'trade', venue: 'curve', side, token: c.mint, impact, lamports, user, price, quote: 'sol', progress, quoteAmount: lamports, creator: c.creator }]);
       if (c.realTokens <= 0) this.graduate(c);
     } else {
-      this.emit(c, [{ kind: 'trade', venue: 'swap', side, token: c.pool, impact, lamports: null, user, price, quote: null, progress: null, quoteAmount: lamports }]);
+      this.emit(c, [{ kind: 'trade', venue: 'swap', side, token: c.pool, impact, lamports: null, user, price, quote: null, progress: null, quoteAmount: lamports, creator: c.creator }]);
     }
   }
 

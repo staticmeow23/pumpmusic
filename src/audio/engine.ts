@@ -4,6 +4,7 @@ import { hash32, isBase58Address } from '../solana/encoding';
 import type { TxMessage } from '../stream/types';
 import { tradeLabel } from '../ui/labels';
 import { SlotClock } from './clock';
+import { RugDetector, type RugSignal } from './rug';
 import {
   MoodMeter,
   PriceMelody,
@@ -47,7 +48,8 @@ const REVERB_SEND: Record<Channel, number> = {
 /** Something the screen should show at local time `at` (performance.now ms). */
 export interface VisualNote {
   at: number;
-  kind: 'buy' | 'sell' | 'create' | 'complete' | 'migrate' | 'failed';
+  /** 'rug': a coin being listened to looks rugged (label: "$TICKER\n<what happened>"). */
+  kind: 'buy' | 'sell' | 'create' | 'complete' | 'migrate' | 'failed' | 'rug';
   venue: Venue | null;
   /** 0..1 */
   size: number;
@@ -168,6 +170,7 @@ export class MusicEngine {
   private focus: string | null = null;
   /** Coin mode: the entered mints; each has its own melody, register and stereo place. */
   private coins = new Map<string, CoinVoice>();
+  private rugs = new RugDetector();
 
   private activeVoices = 0;
   private counters = { notes: 0, merged: 0, late: 0, dropped: 0 };
@@ -279,6 +282,7 @@ export class MusicEngine {
   /** Coin mode: only these mints play, each price drives its own melody. Empty = market mode. */
   setCoins(mints: readonly string[]): void {
     this.coins = new Map(mints.map((m, index) => [m, { index, melody: new PriceMelody(), quote: null, onCurve: false }]));
+    this.rugs = new RugDetector();
     this.focus = null;
   }
 
@@ -427,7 +431,7 @@ export class MusicEngine {
     // Market: big = deep, each coin its own note. Coin mode: each price is a melody
     // in its coin's register, each coin has its place in the stereo field.
     const midi = voice
-      ? coinNote(tx.slot, this.mode, voice.melody.step(ev.price, now) + coinRegister(voice.index))
+      ? coinNote(tx.slot, this.mode, voice.melody.step(ev.price, now) + coinRegister(voice.index), ev.side)
       : tradeNote(tx.slot, this.mode, h, ev.impact, ev.side);
     const vel = velocityForImpact(ev.impact);
     const pan = voice
@@ -479,7 +483,23 @@ export class MusicEngine {
       user: ev.user,
       coinIndex: voice?.index ?? null,
     });
-    if (voice && mint) this.onCoinTrade(ev, mint);
+    if (voice && mint) {
+      this.onCoinTrade(ev, mint);
+      const rug = this.rugs.check(mint, ev, now);
+      if (rug) this.rugAlarm(mint, voice, rug, tx, base, pan);
+    }
+  }
+
+  /** The organ: louder than everything, outside the per-slot note limits. */
+  private rugAlarm(mint: string, voice: CoinVoice, rug: RugSignal, tx: TxMessage, base: number, pan: number): void {
+    const at = Math.max(base, performance.now() + 30);
+    const root = midiToHz(scaleNote(tx.slot, this.mode, 0, 0));
+    this.play('events', at, (ctx, d, t) => V.organ(ctx, d, t, root));
+    const name = this.symbols.has(mint) ? `$${this.symbols.get(mint)}` : `${mint.slice(0, 4)}…`;
+    this.onVisual({
+      at, kind: 'rug', venue: null, size: 1, pitch: 0.2, label: `${name}\n${rug.detail}`, link: this.txLink(tx),
+      whale: true, pan, coin: mint, symbol: this.symbols.get(mint) ?? null, sol: null, faint: false, user: null, coinIndex: voice.index,
+    });
   }
 
   // --------------------------------------------------------------- helpers

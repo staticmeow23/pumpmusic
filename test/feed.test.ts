@@ -32,3 +32,9 @@ test('in coin mode a trade line names the coin and the wallet', () => {
   assert.equal(feedLine(note({ sol: 0.05 }), true, true)?.text, 'Buy 0.05 SOL $POPCAT · Wa11…XyZ1');
   assert.equal(feedLine(note({ kind: 'migrate' }), true, true)?.text, '$POPCAT graduated to PumpSwap');
 });
+
+test('a rug alarm always gets a warning line', () => {
+  const line = feedLine(note({ kind: 'rug', label: '$POPCAT\ndev sold 12 % of the pool' }), false, true);
+  assert.equal(line?.text, '⚠ $POPCAT possible rug: dev sold 12 % of the pool');
+  assert.equal(line?.tone, 'rug');
+});

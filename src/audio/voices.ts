@@ -73,19 +73,72 @@ export function bell(ctx: BaseAudioContext, dest: AudioNode, t: number, freq: nu
 }
 
 /** Sells on the bonding curve: a plucked, darker string, like the strings in Listen to Wikipedia. */
+/**
+ * Sells: a muffled, darker string. The filter opens less and closes fast,
+ * the attack is softer than the bell's, and a quiet minor third underneath
+ * gives it a sombre colour.
+ */
 export function pluck(ctx: BaseAudioContext, dest: AudioNode, t: number, freq: number, vel: number, pan: number): AudioScheduledSourceNode {
   const out = panTo(ctx, dest, pan);
-  const dur = 0.5 + vel * 1.4;
+  const dur = 0.6 + vel * 1.4;
   const lp = ctx.createBiquadFilter();
   lp.type = 'lowpass';
-  lp.Q.value = 3;
-  lp.frequency.setValueAtTime(Math.min(8_000, freq * (4 + vel * 6)), t);
-  lp.frequency.exponentialRampToValueAtTime(Math.max(120, freq * 1.2), t + 0.3);
-  const g = envelope(ctx, out, t, 0.16 * vel + 0.03, 0.003, dur);
+  lp.Q.value = 1.6;
+  lp.frequency.setValueAtTime(Math.min(3_500, freq * (2.2 + vel * 2.5)), t);
+  lp.frequency.exponentialRampToValueAtTime(Math.max(90, freq * 0.9), t + 0.25);
+  const g = envelope(ctx, out, t, 0.18 * vel + 0.04, 0.008, dur);
   lp.connect(g);
   const main = osc(ctx, 'sawtooth', freq, lp, t, t + dur + 0.05);
   osc(ctx, 'triangle', freq * 0.5, lp, t, t + dur + 0.05);
+  const third = ctx.createGain();
+  third.gain.value = 0.35;
+  third.connect(lp);
+  osc(ctx, 'triangle', freq * 2 ** (-9 / 12), third, t, t + dur + 0.05); // minor third below, an octave down
   return main;
+}
+
+/**
+ * Rug pull alarm: a church-organ cluster that doesn't resolve. Drawbar-style
+ * sine partials with a tremolo, a dissonant chord (root, minor second,
+ * tritone, minor ninth), louder than everything else, and at the end the
+ * pitch sags like an organ losing its air.
+ */
+export function organ(ctx: BaseAudioContext, dest: AudioNode, t: number, rootHz: number): AudioScheduledSourceNode {
+  const attack = 0.06;
+  const hold = 2.4;
+  const release = 1.6;
+  const end = t + attack + hold + release;
+
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.22, t + attack);
+  g.gain.setValueAtTime(0.22, t + attack + hold);
+  g.gain.exponentialRampToValueAtTime(0.0001, end);
+  // Leslie-like tremolo.
+  const trem = ctx.createGain();
+  trem.gain.value = 1;
+  const depth = ctx.createGain();
+  depth.gain.value = 0.22;
+  osc(ctx, 'sine', 6.2, depth, t, end + 0.05);
+  depth.connect(trem.gain);
+  trem.connect(g);
+  g.connect(dest);
+
+  const chord = [0, 1, 6, 13].map((semi) => rootHz * 2 ** (semi / 12));
+  const drawbars: [number, number][] = [[0.5, 0.7], [1, 1], [2, 0.6], [3, 0.35], [4, 0.25]];
+  let main: AudioScheduledSourceNode | null = null;
+  for (const f of chord) {
+    for (const [mult, level] of drawbars) {
+      const lv = ctx.createGain();
+      lv.gain.value = level / chord.length;
+      lv.connect(trem);
+      const o = osc(ctx, 'sine', f * mult, lv, t, end + 0.05);
+      o.detune.setValueAtTime(0, t + attack + hold);
+      o.detune.linearRampToValueAtTime(-120, end);
+      main ??= o;
+    }
+  }
+  return main!;
 }
 
 /** Graduated coins on PumpSwap: a warm electric piano; sells are filtered darker. */
