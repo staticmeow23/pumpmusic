@@ -48,9 +48,9 @@ export const DEFAULT_WS_ENDPOINTS = ['wss://api.mainnet.solana.com', 'wss://api.
 
 /**
  * The Slotwave relay (relay/ in this repo, a Cloudflare Worker holding the
- * Helius key). Empty until it is deployed; the app then hides the option.
+ * Helius key). Empty hides the option.
  */
-export const RELAY_WS_URL = '';
+export const RELAY_WS_URL = 'wss://slotwave-relay.staticmeow.workers.dev/ws';
 
 /** Mainnet has no warmup epochs, so epoch = floor(slot / SLOTS_PER_EPOCH). */
 export const SLOTS_PER_EPOCH = 432_000;
