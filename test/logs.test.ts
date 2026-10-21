@@ -124,7 +124,7 @@ test('truncated logs fall back to the instruction name', () => {
   const out = parseLogs(logs, null);
   assert.equal(out.fallbackTrades, 1);
   assert.deepEqual(out.events[0], {
-    kind: 'trade', venue: 'swap', side: 'sell', token: null, impact: null, lamports: null, user: null, price: null, quote: null, progress: null, quoteAmount: null, creator: null,
+    kind: 'trade', venue: 'swap', side: 'sell', token: null, impact: null, lamports: null, user: null, price: null, quote: null, progress: null, quoteAmount: null, creator: null, tokenAmount: null, userTokensBefore: null,
   });
 });
 
@@ -205,5 +205,16 @@ test('curve trades name the coin creator (for spotting a dev dump)', () => {
     assert.equal(t.creator, expectedEvent(file, 'TradeEvent').creator, file);
   }
   const swap = parseLogs(fixture('pumpswap-sell.json').logs, null).events[0] as TradeEvent;
-  assert.equal(swap.creator, null);
+  assert.equal(swap.creator, expectedEvent('pumpswap-sell.json', 'SellEvent').coin_creator, 'PumpSwap names it as coin_creator');
+});
+
+test('trades carry the token amount; PumpSwap sells also the seller balance before and the coin creator', () => {
+  const curve = parseLogs(fixture('pump-create-and-buy.json').logs, null).events.find((e): e is TradeEvent => e.kind === 'trade')!;
+  assert.equal(curve.tokenAmount, expectedEvent('pump-create-and-buy.json', 'TradeEvent').token_amount);
+  assert.equal(curve.userTokensBefore, null, 'curve events do not say what the trader holds');
+  const swap = parseLogs(fixture('pumpswap-sell.json').logs, null).events[0] as TradeEvent;
+  const w = expectedEvent('pumpswap-sell.json', 'SellEvent');
+  assert.equal(swap.tokenAmount, w.base_amount_in);
+  assert.equal(swap.userTokensBefore, w.user_base_token_reserves);
+  assert.equal(swap.creator, w.coin_creator);
 });

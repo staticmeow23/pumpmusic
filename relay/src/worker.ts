@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
-import { fetchCoinInfo } from '../../src/stream/coin-info';
+import { fetchCoinInfo, fetchTokenBalance } from '../../src/stream/coin-info';
 import { DEFAULT_LIMITS, Hub, type HubLimits, type UpstreamHandlers, type UpstreamPort } from './hub';
-import { TokenMeta } from './meta';
+import { TokenHoldings, TokenMeta } from './meta';
 
 export interface Env {
   HUB: DurableObjectNamespace<RelayHub>;
@@ -20,8 +20,8 @@ function heliusHttp(env: Env): string {
 }
 
 /**
- * Entry point: `/ws` (WebSocket), `/token/<mint>` (name and ticker) and
- * `/health`. Everything goes to the same Durable Object, so there is one
+ * Entry point: `/ws` (WebSocket), `/token/<mint>` (name and ticker),
+ * `/holding/<owner>/<mint>` (a wallet's balance of a coin) and `/health`. Everything goes to the same Durable Object, so there is one
  * upstream connection in total.
  */
 export default {
@@ -31,7 +31,7 @@ export default {
     const allowed = (env.ALLOWED_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean);
     const origin = req.headers.get('Origin') ?? '';
     if (url.pathname === '/health') return hub.fetch(req);
-    if (url.pathname.startsWith('/token/')) {
+    if (url.pathname.startsWith('/token/') || url.pathname.startsWith('/holding/')) {
       if (req.method !== 'GET') return new Response('GET only', { status: 405 });
       if (origin && allowed.length && !allowed.includes(origin)) return new Response('Origin not allowed', { status: 403 });
       const res = await hub.fetch(req);
@@ -53,6 +53,7 @@ export default {
 export class RelayHub extends DurableObject<Env> {
   private readonly hub: Hub;
   private readonly meta: TokenMeta;
+  private readonly holdings: TokenHoldings;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -61,6 +62,7 @@ export class RelayHub extends DurableObject<Env> {
       (mint) => fetchCoinInfo(heliusHttp(env), mint),
       () => Date.now(),
     );
+    this.holdings = new TokenHoldings((owner, mint) => fetchTokenBalance(heliusHttp(env), owner, mint), () => Date.now());
     const limits: HubLimits = { ...DEFAULT_LIMITS };
     const daily = Number(env.DAILY_BYTES);
     if (Number.isFinite(daily) && daily > 0) limits.dailyBytes = daily;
@@ -89,6 +91,11 @@ export class RelayHub extends DurableObject<Env> {
       const r = await this.meta.get(decodeURIComponent(path.slice('/token/'.length)));
       // A coin's ticker never changes: let browsers keep good answers for a day.
       return Response.json(r.body, { status: r.status, headers: { 'cache-control': r.status === 200 ? 'public, max-age=86400' : 'no-store' } });
+    }
+    if (path.startsWith('/holding/')) {
+      const [owner = '', mint = ''] = path.slice('/holding/'.length).split('/');
+      const r = await this.holdings.get(owner, mint);
+      return Response.json(r.body, { status: r.status, headers: { 'cache-control': 'no-store' } });
     }
     const pair = new WebSocketPair();
     const [client, server] = [pair[0], pair[1]];

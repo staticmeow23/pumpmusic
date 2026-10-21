@@ -2,48 +2,65 @@ import { RUG } from '../config';
 import type { TradeEvent } from '../pump/events';
 
 export interface RugSignal {
-  reason: 'dump' | 'dev' | 'crash';
-  /** Short, human text, e.g. "dev sold 12 % of the pool". */
+  reason: 'dev';
+  /** Short, human text, e.g. "dev sold 83 % of their tokens". */
   detail: string;
 }
 
+interface Dev {
+  creator: string;
+  /** Raw tokens the dev holds, as far as we know; null = unknown. */
+  balance: number | null;
+  asked: boolean;
+}
+
 /**
- * Watches the trades of the coins being listened to and raises an alarm when
- * one looks like a rug pull (see RUG in config). Pure, so it can be tested
- * and later shared with Rug Guard.
+ * Raises the rug alarm when a coin's creator sells at least RUG.devSellShare
+ * of their own tokens in one trade. To know the share it follows the dev's
+ * balance: zero for a coin created while we listen, the balance PumpSwap
+ * events report, or a one-off lookup (needsBalance -> setDevBalance), then
+ * every buy and sell by the dev. Tokens moved to other wallets first are
+ * invisible to it. Pure, so it can be tested and shared with Rug Guard.
  */
 export class RugDetector {
-  private readonly prices = new Map<string, { at: number; price: number }[]>();
+  private readonly devs = new Map<string, Dev>();
   private readonly lastAlarm = new Map<string, number>();
 
-  check(coin: string, ev: TradeEvent, now: number): RugSignal | null {
-    const history = this.prices.get(coin) ?? [];
-    if (ev.price !== null && ev.price > 0) history.push({ at: now, price: ev.price });
-    while (history.length && now - history[0]!.at > RUG.windowMs) history.shift();
-    this.prices.set(coin, history);
+  /** The coin was created while we listen: its dev starts with nothing. */
+  noteCreate(coin: string, creator: string): void {
+    this.devs.set(coin, { creator, balance: 0, asked: true });
+  }
 
-    const signal = this.signalFor(ev, history, now);
-    if (!signal) return null;
+  setDevBalance(coin: string, creator: string, balance: number): void {
+    this.devs.set(coin, { creator, balance, asked: true });
+  }
+
+  /** Once per coin, when its dev is known but their balance isn't: who to look up. */
+  needsBalance(coin: string): { creator: string } | null {
+    const dev = this.devs.get(coin);
+    if (!dev || dev.balance !== null || dev.asked) return null;
+    dev.asked = true;
+    return { creator: dev.creator };
+  }
+
+  check(coin: string, ev: TradeEvent, now: number): RugSignal | null {
+    let dev = this.devs.get(coin);
+    if (!dev && ev.creator) {
+      dev = { creator: ev.creator, balance: null, asked: false };
+      this.devs.set(coin, dev);
+    }
+    if (!dev || ev.user !== dev.creator || ev.tokenAmount === null) return null;
+
+    // PumpSwap tells us the balance before the trade; otherwise use what we followed.
+    const before = ev.userTokensBefore ?? dev.balance;
+    if (before !== null) dev.balance = Math.max(0, before + (ev.side === 'buy' ? ev.tokenAmount : -ev.tokenAmount));
+    if (ev.side !== 'sell' || before === null || before <= 0) return null;
+
+    const share = Math.min(1, ev.tokenAmount / before);
+    if (share < RUG.devSellShare) return null;
     const last = this.lastAlarm.get(coin);
     if (last !== undefined && now - last < RUG.cooldownMs) return null;
     this.lastAlarm.set(coin, now);
-    return signal;
-  }
-
-  private signalFor(ev: TradeEvent, history: { at: number; price: number }[], now: number): RugSignal | null {
-    if (ev.side !== 'sell') return null;
-    const share = ev.impact ?? 0;
-    const pct = (x: number) => Math.round(x * 100);
-    if (ev.creator !== null && ev.user === ev.creator && share >= RUG.devImpact) {
-      return { reason: 'dev', detail: `dev sold ${pct(share)} % of the pool` };
-    }
-    if (share >= RUG.dumpImpact) return { reason: 'dump', detail: `one sell took ${pct(share)} % of the pool` };
-    const peak = history.reduce((best, h) => (h.price > best.price ? h : best), history[0] ?? { at: now, price: 0 });
-    const current = history.at(-1)?.price ?? 0;
-    if (peak.price > 0 && current > 0) {
-      const drop = 1 - current / peak.price;
-      if (drop >= RUG.crashDrop) return { reason: 'crash', detail: `−${pct(drop)} % in ${Math.max(1, Math.round((now - peak.at) / 1_000))} s` };
-    }
-    return null;
+    return { reason: 'dev', detail: `dev sold ${Math.round(share * 100)} % of their tokens` };
   }
 }

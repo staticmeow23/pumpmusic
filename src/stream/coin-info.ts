@@ -70,3 +70,65 @@ export async function fetchRelayInfo(url: string): Promise<CoinInfo | null> {
     return null;
   }
 }
+
+/** Any WebSocket RPC endpoint has an HTTP twin on the same host and path. */
+export function httpUrlFor(wsUrl: string): string | null {
+  try {
+    const u = new URL(wsUrl);
+    if (u.protocol !== 'wss:' && u.protocol !== 'ws:') return null;
+    u.protocol = u.protocol === 'wss:' ? 'https:' : 'http:';
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+/** Sum of the raw amounts in a jsonParsed getTokenAccountsByOwner answer; null if it isn't one. */
+export function parseTokenBalance(json: unknown): number | null {
+  const value = (json as { result?: { value?: unknown } } | null)?.result?.value;
+  if (!Array.isArray(value)) return null;
+  let total = 0;
+  for (const item of value) {
+    const amount = (item as { account?: { data?: { parsed?: { info?: { tokenAmount?: { amount?: unknown } } } } } })?.account?.data?.parsed?.info?.tokenAmount?.amount;
+    if (typeof amount !== 'string' || !/^\d+$/.test(amount)) return null;
+    total += Number(amount);
+  }
+  return total;
+}
+
+/** A wallet's raw balance of one token (standard RPC, all token programs). Null on any failure. */
+export async function fetchTokenBalance(httpUrl: string, owner: string, mint: string): Promise<number | null> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 6_000);
+  try {
+    const res = await fetch(httpUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 'slotwave', method: 'getTokenAccountsByOwner', params: [owner, { mint }, { encoding: 'jsonParsed', commitment: 'processed' }] }),
+      signal: ctrl.signal,
+    });
+    return res.ok ? parseTokenBalance(await res.json()) : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** wss://host/ws -> https://host/holding/<owner>/<mint> */
+export function relayHoldingUrl(wsUrl: string, owner: string, mint: string): string | null {
+  const meta = relayMetaUrl(wsUrl, mint);
+  return meta ? meta.replace(/\/token\/[^/]+$/, `/holding/${owner}/${mint}`) : null;
+}
+
+/** The dev's balance from the relay. */
+export async function fetchRelayHolding(url: string): Promise<number | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const amount = ((await res.json()) as { amount?: unknown }).amount;
+    return typeof amount === 'number' && Number.isFinite(amount) && amount >= 0 ? amount : null;
+  } catch {
+    return null;
+  }
+}

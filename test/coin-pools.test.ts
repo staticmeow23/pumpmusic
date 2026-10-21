@@ -4,7 +4,7 @@ import { learnCoinPool } from '../src/audio/engine';
 import type { PumpEvent } from '../src/pump/events';
 
 const swap = (pool: string): PumpEvent => ({
-  kind: 'trade', venue: 'swap', side: 'buy', token: pool, impact: 0.01, lamports: null, user: null, price: 1, quote: null, progress: null, quoteAmount: 1e8, creator: null,
+  kind: 'trade', venue: 'swap', side: 'buy', token: pool, impact: 0.01, lamports: null, user: null, price: 1, quote: null, progress: null, quoteAmount: 1e8, creator: null, tokenAmount: null, userTokensBefore: null,
 });
 
 test('one unknown PumpSwap pool in a transaction of the coin belongs to the coin', () => {

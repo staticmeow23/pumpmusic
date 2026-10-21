@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { TokenMeta, type MetaStore } from '../relay/src/meta';
-import { relayMetaUrl } from '../src/stream/coin-info';
+import { TokenHoldings, TokenMeta, type MetaStore } from '../relay/src/meta';
+import { parseTokenBalance, relayHoldingUrl, relayMetaUrl } from '../src/stream/coin-info';
 
 const A = '7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr';
 const B = 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263';
@@ -47,4 +47,30 @@ test('the app finds the ticker route next to the relay socket', () => {
   assert.equal(relayMetaUrl('wss://slotwave-relay.x.workers.dev/ws', A), `https://slotwave-relay.x.workers.dev/token/${A}`);
   assert.equal(relayMetaUrl('ws://127.0.0.1:8787/ws', A), `http://127.0.0.1:8787/token/${A}`);
   assert.equal(relayMetaUrl('nonsense', A), null);
+});
+
+test('a token balance is the sum over all the owner token accounts for that mint', () => {
+  const acct = (amount: string) => ({ account: { data: { parsed: { info: { tokenAmount: { amount } } } } } });
+  assert.equal(parseTokenBalance({ result: { value: [acct('1500'), acct('500')] } }), 2_000);
+  assert.equal(parseTokenBalance({ result: { value: [] } }), 0, 'no account: holds nothing');
+  assert.equal(parseTokenBalance({ error: { message: 'x' } }), null);
+  assert.equal(parseTokenBalance({ result: { value: [{ account: {} }] } }), null, 'unexpected shape: unknown, not zero');
+});
+
+test('the app finds the holdings route next to the relay socket', () => {
+  assert.equal(relayHoldingUrl('wss://r.x.workers.dev/ws', B, A), `https://r.x.workers.dev/holding/${B}/${A}`);
+});
+
+test('holdings: cached briefly, nonsense refused, new lookups capped per day', async () => {
+  let now = Date.UTC(2026, 9, 21, 12);
+  const asked: string[] = [];
+  const h = new TokenHoldings(async (owner, mint) => (asked.push(`${owner}/${mint}`), 42), () => now, 2);
+  assert.deepEqual(await h.get(B, A), { status: 200, body: { amount: 42 } });
+  assert.deepEqual(await h.get(B, A), { status: 200, body: { amount: 42 } });
+  assert.equal(asked.length, 1, 'second answer from the cache');
+  now += 30_000;
+  await h.get(B, A);
+  assert.equal(asked.length, 2, 'stale after 20 s');
+  assert.equal((await h.get('bad', A)).status, 400);
+  assert.equal((await h.get(A, B)).status, 429, 'third lookup today');
 });

@@ -179,6 +179,12 @@ export class MusicEngine {
   onSlotMark: (m: SlotMark) => void = () => {};
   /** Coin mode: every trade of the coin, for its price and stats. */
   onCoinTrade: (ev: TradeEvent, mint: string) => void = () => {};
+  /** Coin mode: the dev's token balance is needed to tell a rug from a trim; answer with setDevBalance. */
+  onNeedDevBalance: (mint: string, creator: string) => void = () => {};
+
+  setDevBalance(mint: string, creator: string, balance: number): void {
+    this.rugs.setDevBalance(mint, creator, balance);
+  }
 
   /** Must be called from a user gesture (browser autoplay rules). */
   async start(): Promise<void> {
@@ -373,6 +379,7 @@ export class MusicEngine {
         return;
       case 'create': {
         this.symbols.set(ev.mint, ev.symbol);
+        if (this.coins.has(ev.mint)) this.rugs.noteCreate(ev.mint, ev.creator);
         if (this.symbols.size > 5_000) this.symbols.delete(this.symbols.keys().next().value!);
         const faint = !this.isFocused(ev.mint, ev.mint);
         const at = faint ? null : this.place(tx.slot, 'events', base, 2);
@@ -487,6 +494,8 @@ export class MusicEngine {
       this.onCoinTrade(ev, mint);
       const rug = this.rugs.check(mint, ev, now);
       if (rug) this.rugAlarm(mint, voice, rug, tx, base, pan);
+      const need = this.rugs.needsBalance(mint);
+      if (need) this.onNeedDevBalance(mint, need.creator);
     }
   }
 

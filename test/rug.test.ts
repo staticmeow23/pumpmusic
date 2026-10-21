@@ -5,49 +5,52 @@ import type { TradeEvent } from '../src/pump/events';
 
 const DEV = 'DevWa11etAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 const t = (over: Partial<TradeEvent>): TradeEvent => ({
-  kind: 'trade', venue: 'curve', side: 'buy', token: 'M', impact: 0.01, lamports: 1e8, user: 'Someone', price: 1, quote: 'sol', progress: 0.5, quoteAmount: 1e8, creator: DEV, ...over,
+  kind: 'trade', venue: 'curve', side: 'buy', token: 'M', impact: 0.01, lamports: 1e8, user: 'Someone', price: 1, quote: 'sol', progress: 0.5,
+  quoteAmount: 1e8, creator: DEV, tokenAmount: 1_000, userTokensBefore: null, ...over,
 });
 
-test('one huge sell is a rug: a fifth of the pool or more', () => {
+test('only the dev selling at least half of their own tokens is a rug', () => {
   const d = new RugDetector();
-  assert.equal(d.check('M', t({ side: 'sell', impact: 0.12 }), 0), null, 'big, but not a rug');
-  const r = d.check('M', t({ side: 'sell', impact: 0.35 }), 1_000);
-  assert.equal(r?.reason, 'dump');
-  assert.match(r!.detail, /35 % of the pool/);
+  d.setDevBalance('M', DEV, 10_000);
+  assert.equal(d.check('M', t({ user: DEV, side: 'sell', tokenAmount: 4_000 }), 0), null, '40 % of the bag: not yet');
+  const r = d.check('M', t({ user: DEV, side: 'sell', tokenAmount: 5_000 }), 1_000); // 5,000 of the 6,000 left
+  assert.equal(r?.reason, 'dev');
+  assert.match(r!.detail, /dev sold 83 % of their tokens/);
 });
 
-test('the dev selling a real chunk is a rug, buying is not', () => {
+test('huge sells by anyone else never ring the alarm', () => {
   const d = new RugDetector();
-  assert.equal(d.check('M', t({ user: DEV, side: 'buy', impact: 0.2 }), 0), null);
-  assert.equal(d.check('M', t({ user: DEV, side: 'sell', impact: 0.01 }), 1_000), null, 'dev trimming a little');
-  assert.equal(d.check('M', t({ user: DEV, side: 'sell', impact: 0.08 }), 2_000)?.reason, 'dev');
+  d.setDevBalance('M', DEV, 10_000);
+  assert.equal(d.check('M', t({ side: 'sell', impact: 0.9, tokenAmount: 9e9 }), 0), null);
 });
 
-test('a crash of 40 % within a minute is a rug, even in many small sells', () => {
+test('the dev balance is followed through their buys and sells', () => {
   const d = new RugDetector();
-  let price = 1;
-  let hit = null;
-  for (let i = 0; i < 30 && !hit; i++) {
-    price *= 0.97;
-    hit = d.check('M', t({ side: 'sell', impact: 0.02, price }), i * 1_500);
-  }
-  assert.equal(hit?.reason, 'crash');
-  assert.match(hit!.detail, /−4\d % in \d+ s/);
+  d.noteCreate('M', DEV); // created while we listen: the dev starts with nothing
+  d.check('M', t({ user: DEV, side: 'buy', tokenAmount: 8_000 }), 0);
+  d.check('M', t({ user: DEV, side: 'sell', tokenAmount: 1_000 }), 1_000); // 12.5 %
+  assert.equal(d.check('M', t({ user: DEV, side: 'sell', tokenAmount: 3_000 }), 2_000), null, '3,000 of 7,000 = 43 %');
+  assert.equal(d.check('M', t({ user: DEV, side: 'sell', tokenAmount: 4_000 }), 3_000)?.reason, 'dev', 'the whole rest');
 });
 
-test('a slow decline over many minutes is not a crash', () => {
+test('without a known balance there is no alarm, and the detector asks for one once', () => {
   const d = new RugDetector();
-  let price = 1;
-  for (let i = 0; i < 100; i++) {
-    price *= 0.99;
-    assert.equal(d.check('M', t({ side: 'sell', impact: 0.01, price }), i * 10_000), null);
-  }
+  assert.equal(d.check('M', t({ user: DEV, side: 'sell', tokenAmount: 1e12 }), 0), null);
+  assert.deepEqual(d.needsBalance('M'), { creator: DEV });
+  assert.equal(d.needsBalance('M'), null, 'asked once');
 });
 
-test('one alarm per coin per two minutes, coins independent', () => {
+test('PumpSwap sells carry the balance before the sell: no lookup needed', () => {
   const d = new RugDetector();
-  assert.ok(d.check('M', t({ side: 'sell', impact: 0.4 }), 0));
-  assert.equal(d.check('M', t({ side: 'sell', impact: 0.4 }), 60_000), null);
-  assert.ok(d.check('N', t({ side: 'sell', impact: 0.4, token: 'N' }), 60_000));
-  assert.ok(d.check('M', t({ side: 'sell', impact: 0.4 }), 121_000));
+  const r = d.check('M', t({ venue: 'swap', user: DEV, side: 'sell', tokenAmount: 1_167, userTokensBefore: 1_167 }), 0);
+  assert.equal(r?.reason, 'dev');
+  assert.match(r!.detail, /100 %/);
+});
+
+test('one alarm per coin per two minutes', () => {
+  const d = new RugDetector();
+  d.setDevBalance('M', DEV, 100_000);
+  assert.ok(d.check('M', t({ user: DEV, side: 'sell', tokenAmount: 60_000 }), 0));
+  d.setDevBalance('M', DEV, 100_000);
+  assert.equal(d.check('M', t({ user: DEV, side: 'sell', tokenAmount: 60_000 }), 60_000), null);
 });

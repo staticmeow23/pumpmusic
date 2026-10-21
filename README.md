@@ -65,9 +65,11 @@ Optionen: `--drop-after=6` (Verbindung bricht nach 6 s ab), `--refuse-logs` (RPC
 - **Jeder Coin hat seine Farbe, Tonlage und Spalte** (links → rechts in der Reihenfolge der Eingabe).
   Kauf = gefüllte Blase + Glocke, Verkauf = Ring + gedämpfte, düstere Saite eine Oktave tiefer.
   Jede Blase zeigt den Ticker und darunter den Betrag (`$TICKER` / `+0.52 SOL`).
-- **Rugpull-Alarm:** Verkauft ein einzelner Trade ≥ 20 % des Pools, verkauft der Ersteller des Coins ≥ 5 %, oder fällt
-  der Kurs innerhalb einer Minute um 40 %, ertönt eine dissonante Orgel, rote Druckwellen laufen über den Bildschirm
-  und der Feed meldet „⚠ $TICKER possible rug: …“. Höchstens einmal pro Coin alle 2 Minuten. Eine Heuristik, kein Beweis.
+- **Rugpull-Alarm:** Nur wenn der **Dev** (Ersteller des Coins) in einem Zug mindestens **50 % seiner eigenen Tokens**
+  verkauft (`RUG.devSellShare` in `src/config.ts`). Dann ertönt eine dissonante Orgel, rote Druckwellen laufen über den
+  Bildschirm und der Feed meldet „⚠ $TICKER possible rug: dev sold 83 % of their tokens“. Den Bestand des Devs kennt die
+  App aus den PumpSwap-Events, aus einer einmaligen Abfrage über das Relay oder (bei neuen Coins) von Anfang an.
+  Verteilt der Dev seine Tokens vorher auf andere Wallets, sieht die App das nicht.
   Klick auf eine Blase öffnet die Transaktion auf Solscan.
 - **Stats** pro Coin: Market Cap, Änderung seit dem Einschalten, Bonding-Curve-Fortschritt, Käufe/Verkäufe pro Minute.
 - Der Link `#coins=<CA1>,<CA2>` öffnet die Seite mit diesen Coins.

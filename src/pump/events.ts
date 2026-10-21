@@ -28,8 +28,12 @@ export interface TradeEvent {
   progress: number | null;
   /** Trade size in raw quote units (lamports for SOL); on PumpSwap the quote mint is unknown here. */
   quoteAmount: number | null;
-  /** The coin's creator (curve events since 2025); a sell by them is a dev dump. */
+  /** The coin's creator (curve: creator, PumpSwap: coin_creator); a sell by them is a dev dump. */
   creator: string | null;
+  /** Raw base tokens bought or sold. */
+  tokenAmount: number | null;
+  /** The trader's raw token balance before the trade; only PumpSwap events carry it. */
+  userTokensBefore: number | null;
 }
 
 export type Quote = 'sol' | 'usdc' | 'other';
@@ -94,7 +98,7 @@ export function decodeCurveTrade(body: Uint8Array): TradeEvent {
   const r = new BorshReader(body);
   const mint = r.pubkey();
   const solAmount = r.u64();
-  r.u64(); // token_amount
+  const tokenAmount = r.u64();
   const isBuy = r.bool();
   const user = r.pubkey();
   r.i64(); // timestamp
@@ -149,7 +153,7 @@ export function decodeCurveTrade(body: Uint8Array): TradeEvent {
   const progress = realTokenReserves === null ? null : Math.min(1, Math.max(0, 1 - realTokenReserves / INITIAL_REAL_TOKEN_RESERVES));
 
   const size = solAmount > 0 ? solAmount : quoteAmount;
-  return { kind: 'trade', venue: 'curve', side: isBuy ? 'buy' : 'sell', token: mint, impact, lamports, user, price, quote, progress, quoteAmount: size, creator };
+  return { kind: 'trade', venue: 'curve', side: isBuy ? 'buy' : 'sell', token: mint, impact, lamports, user, price, quote, progress, quoteAmount: size, creator, tokenAmount, userTokensBefore: null };
 }
 
 export function decodeCreate(body: Uint8Array): CreateEvent {
@@ -185,14 +189,15 @@ export function decodeMigration(body: Uint8Array): MigrateEvent {
 
 /**
  * PumpSwap BuyEvent / SellEvent share a fixed 112-byte prefix of one i64 and
- * thirteen u64 fields, followed by pool and user.
+ * thirteen u64 fields, followed by pool and user. Newer events go on with four
+ * token accounts and the coin creator (read best-effort).
  */
 export function decodeSwapTrade(body: Uint8Array, side: Side): TradeEvent {
   const r = new BorshReader(body);
   r.i64(); // timestamp
-  r.u64(); // base_amount_out | base_amount_in
+  const baseAmount = r.u64(); // base_amount_out | base_amount_in
   r.u64(); // max_quote_amount_in | min_quote_amount_out
-  r.u64(); // user_base_token_reserves
+  const userBaseBefore = r.u64(); // user_base_token_reserves
   r.u64(); // user_quote_token_reserves
   const poolBaseReserves = r.u64();
   const poolQuoteReserves = r.u64();
@@ -200,6 +205,13 @@ export function decodeSwapTrade(body: Uint8Array, side: Side): TradeEvent {
   r.skip(6 * 8); // fees and the two user-side quote amounts
   const pool = r.pubkey();
   const user = r.pubkey();
+  let creator: string | null = null;
+  try {
+    r.skip(4 * 32); // user base/quote token accounts, protocol fee recipient and its token account
+    creator = r.pubkey(); // coin_creator
+  } catch (e) {
+    if (!(e instanceof EndOfData)) throw e;
+  }
   return {
     kind: 'trade',
     venue: 'swap',
@@ -212,7 +224,9 @@ export function decodeSwapTrade(body: Uint8Array, side: Side): TradeEvent {
     quote: null,
     progress: null,
     quoteAmount,
-    creator: null,
+    creator,
+    tokenAmount: baseAmount,
+    userTokensBefore: userBaseBefore,
   };
 }
 

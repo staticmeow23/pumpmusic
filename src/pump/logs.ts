@@ -111,7 +111,7 @@ export function parseLogs(logs: readonly string[], err: unknown): ParsedLogs {
   // instructions but could not read any trade event, still make a sound.
   if (decodedTrades === 0 && pendingIx.length > 0) {
     for (const ix of pendingIx) {
-      result.events.push({ kind: 'trade', venue: ix.venue, side: ix.side, token: null, impact: null, lamports: null, user: null, price: null, quote: null, progress: null, quoteAmount: null, creator: null });
+      result.events.push({ kind: 'trade', venue: ix.venue, side: ix.side, token: null, impact: null, lamports: null, user: null, price: null, quote: null, progress: null, quoteAmount: null, creator: null, tokenAmount: null, userTokensBefore: null });
       result.fallbackTrades++;
     }
   }

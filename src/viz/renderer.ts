@@ -218,11 +218,12 @@ export class Renderer {
   private drawBubble(b: Bubble, now: number): void {
     const { ctx } = this;
     const n = b.note;
-    const age = now - b.born;
+    // Clocks can disagree by a frame (e.g. a bubble born in this frame's future): never draw a negative age.
+    const age = Math.max(0, now - b.born);
     const p = age / b.life;
     // Pop in with a little overshoot, then drift upward and fade.
     const pop = age < 260 ? 0.3 + 0.75 * Math.sin((age / 260) * (Math.PI * 0.6)) / Math.sin(Math.PI * 0.6) : 1;
-    const r = b.r * Math.min(pop, 1.05);
+    const r = Math.max(0.5, b.r * Math.min(pop, 1.05));
     const y = b.y - age * 0.006;
     // Coins outside the focus stay visible as faint context, like silent edits in Listen to Wikipedia.
     const alpha = Math.min(1, (1 - p) * 1.4) * (b === this.hover ? 1 : 0.9) * (n.faint ? 0.22 : 1);

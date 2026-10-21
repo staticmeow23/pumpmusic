@@ -52,7 +52,8 @@ function* readFrames(state) {
   }
 }
 
-// HTTP: answers DAS getAsset with a made-up ticker, so the relay's /token route can be tried offline.
+// HTTP: answers DAS getAsset with a made-up ticker and getTokenAccountsByOwner with a made-up
+// balance, so the relay's /token and /holding routes can be tried offline.
 const server = createServer((req, res) => {
   if (req.method !== 'POST') return res.writeHead(426).end('WebSocket only');
   let body = '';
@@ -60,6 +61,12 @@ const server = createServer((req, res) => {
   req.on('end', () => {
     let msg = {};
     try { msg = JSON.parse(body); } catch {}
+    if (msg.method === 'getTokenAccountsByOwner') {
+      console.log(`getTokenAccountsByOwner ${msg.params?.[0]}`);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      const account = { account: { data: { parsed: { info: { tokenAmount: { amount: '35000000000000' } } } } } };
+      return res.end(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: { value: [account] } }));
+    }
     const id = msg.params?.id;
     if (msg.method !== 'getAsset' || typeof id !== 'string') return res.writeHead(400).end();
     console.log(`getAsset ${id}`);

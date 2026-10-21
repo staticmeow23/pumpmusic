@@ -138,6 +138,8 @@ export class DemoStream implements Stream {
           progress: null,
           quoteAmount: Math.round(impact * 32e9),
           creator: null,
+          tokenAmount: null,
+          userTokensBefore: null,
         },
       ]);
     }

@@ -59,6 +59,12 @@ und ein kostenloses Cloudflare-Konto ([dash.cloudflare.com/sign-up](https://dash
 merkt sich die Antwort für immer; unbekannte Coins eine Stunde lang. Höchstens 2.000 neue Coins pro Tag, damit
 niemand mit Zufallsadressen Credits verbrennt.
 
+## Dev-Bestand
+
+`GET /holding/<Wallet>/<CA>` liefert, wie viele Tokens eines Coins eine Wallet hält (`getTokenAccountsByOwner`).
+Die App fragt damit einmal pro Coin den Bestand des Devs ab, um einen echten Rug von einem kleinen Verkauf zu
+unterscheiden. Antworten werden 20 Sekunden gemerkt, höchstens 5.000 Abfragen pro Tag.
+
 ## Überwachen
 
 - `…/health` zeigt Zuhörer, Coins, ob Helius verbunden ist und die heutigen Bytes.

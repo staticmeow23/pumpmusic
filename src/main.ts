@@ -1,7 +1,7 @@
 import { CHANNELS, DEFAULT_GAINS, MusicEngine, type Channel, type VisualNote } from './audio/engine';
 import { COIN_COLORS, DEFAULT_WS_ENDPOINTS, RELAY_WS_URL, FEED, HELIUS_CREDITS_PER_100KB, HELIUS_FREE_MONTHLY_CREDITS, MAX_COINS, MUSIC } from './config';
 import { CoinDemoStream } from './stream/coin-demo';
-import { fetchCoinInfo, fetchRelayInfo, heliusHttpUrl, relayMetaUrl } from './stream/coin-info';
+import { fetchCoinInfo, fetchRelayHolding, fetchRelayInfo, fetchTokenBalance, heliusHttpUrl, httpUrlFor, relayHoldingUrl, relayMetaUrl } from './stream/coin-info';
 import { DemoStream } from './stream/demo-stream';
 import { RpcStream, isValidWsUrl, maskEndpoint } from './stream/rpc-stream';
 import type { Stream, StreamState, StreamTarget, TxMessage } from './stream/types';
@@ -85,6 +85,7 @@ engine.onVisual = (n) => {
 };
 engine.onSlotMark = (m) => renderer.slot(m);
 engine.onCoinTrade = (ev, mint) => trackers.get(mint)?.add(ev, performance.now());
+engine.onNeedDevBalance = (mint, creator) => void lookUpDevBalance(mint, creator);
 
 // -------------------------------------------------------------------- metrics
 
@@ -482,6 +483,20 @@ async function lookUpName(source: Source, wsUrl: string, mint: string): Promise<
     engine.setSymbol(mint, info.symbol);
     refreshFocusName();
   }
+}
+
+/** The dev's balance, once per coin, so a rug can be told from a trim. Demo coins don't need it. */
+async function lookUpDevBalance(mint: string, creator: string): Promise<void> {
+  const source = settings.source;
+  let balance: number | null = null;
+  if (source === 'relay') {
+    const url = relayHoldingUrl(RELAY_WS_URL, creator, mint);
+    balance = url ? await fetchRelayHolding(url) : null;
+  } else if (source === 'custom') {
+    const http = httpUrlFor($<HTMLInputElement>('endpoint').value.trim());
+    balance = http ? await fetchTokenBalance(http, creator, mint) : null;
+  }
+  if (balance !== null && engine.coinList.includes(mint)) engine.setDevBalance(mint, creator, balance);
 }
 
 // ---------------------------------------------------------------- controls
